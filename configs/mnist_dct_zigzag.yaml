@@ -16,7 +16,7 @@ tokenizer:
     scaling: minmax         # minmax | standard
     per_position: false
   quantization:
-    method: uniform         # uniform | quantile
+    method: uniform
     num_bins: 256
     per_position: false
 
