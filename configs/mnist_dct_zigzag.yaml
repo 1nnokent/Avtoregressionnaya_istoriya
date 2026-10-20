@@ -1,23 +1,7 @@
-# Baseline: MNIST -> DCT -> zigzag -> signed log + minmax -> uniform 256 bins
-data:                  # arguments of src.datasets_loader.load_images
-  ds_name: mnist          # mnist | cifar10 | celeba | imagenet
-  gray: true           # false = rgb (cifar10, celeba, imagenet)
-  size: 64             # only for celeba / imagenet
-  limit: null          # images per split, null = all
-
+extends: base.yaml
+experiment:
+  name: mnist_dct_zigzag_full
 tokenizer:
-  decomposition: dct   # dct | block_dct | dft | wavelet
-  decomposition_params: {}
-  ordering: zigzag     # zigzag | dyadic | radial | block
-  ordering_params: {}
-  normalization:
-    transform: signed_log   # none | signed_log
-    log_scale: 255.0
-    scaling: minmax         # minmax | standard
-    per_position: false
+  max_tokens: null
   quantization:
-    method: uniform         # uniform | quantile
     num_bins: 256
-    per_position: false
-
-batch_size: 128

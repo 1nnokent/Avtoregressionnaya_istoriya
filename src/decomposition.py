@@ -114,3 +114,14 @@ def _wavelet_slices(height: int, width: int, wavelet: str, level: int) -> list:
     coeffs = pywt.wavedec2(np.zeros((height, width)), wavelet, mode="periodization", level=level)
     _, slices = pywt.coeffs_to_array(coeffs)
     return [(..., *slices[0])] + [{key: (..., *value) for key, value in part.items()} for part in slices[1:]]
+
+
+# Compatibility with the original data branch API.
+def dct2(image: np.ndarray) -> np.ndarray:
+    check_2d(image, "image")
+    return dct_forward(image)
+
+
+def idct2(coeffs: np.ndarray) -> np.ndarray:
+    check_2d(coeffs, "coeffs")
+    return dct_inverse(coeffs)

@@ -1,0 +1,16 @@
+extends: base.yaml
+experiment:
+  name: cifar10_dct
+data:
+  ds_name: cifar10
+  gray: false
+  size: 32
+tokenizer:
+  max_tokens: null
+model:
+  params:
+    d_model: 128
+    n_layers: 4
+    d_ff: 512
+metrics:
+  encoders: [inception]

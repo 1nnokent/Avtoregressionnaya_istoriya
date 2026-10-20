@@ -6,3 +6,10 @@ __pycache__/
 
 .claude
 .vscode
+.idea/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+runs/
+checkpoints/
+*.egg-info/

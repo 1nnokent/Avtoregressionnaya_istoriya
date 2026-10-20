@@ -39,3 +39,15 @@ def invert_ordering(sequence: np.ndarray, indices: np.ndarray, height: int, widt
     flat = np.empty_like(sequence)
     flat[..., indices] = sequence
     return flat.reshape(*sequence.shape[:-1], height, width)
+
+
+def zigzag_indices(height: int, width: int) -> np.ndarray:
+    return ordering_indices("zigzag", height, width)
+
+
+def zigzag(coeffs: np.ndarray) -> np.ndarray:
+    return forward_ordering(coeffs, zigzag_indices(*coeffs.shape[-2:]))
+
+
+def inverse_zigzag(sequence: np.ndarray, height: int, width: int) -> np.ndarray:
+    return invert_ordering(sequence, zigzag_indices(height, width), height, width)

@@ -6,292 +6,100 @@ import torch.nn.functional as F
 
 
 def get_tokens(batch):
-    if isinstance(batch, torch.Tensor):
-        tokens = batch
-    elif isinstance(batch, dict):
-        tokens = batch["tokens"]
-    elif isinstance(batch, (tuple, list)):
-        tokens = batch[0]
-    else:
-        raise TypeError("Unsupported batch format")
-
-    if not isinstance(tokens, torch.Tensor):
-        raise TypeError("Batch tokens must be a tensor")
-
-    if tokens.ndim != 2:
-        raise ValueError("Expected tokens with shape [batch, sequence]")
-
-    return tokens.long()
+    tokens = batch if isinstance(batch, torch.Tensor) else batch["tokens"] if isinstance(batch, dict) else batch[0]
+    if not isinstance(tokens, torch.Tensor) or tokens.ndim != 2 or tokens.dtype != torch.long:
+        raise ValueError("Expected int64 tokens [batch, sequence]")
+    return tokens
 
 
 def prepare_batch(batch, model, device):
     tokens = get_tokens(batch).to(device)
-
-    if tokens.size(0) == 0 or tokens.size(1) == 0:
-        raise ValueError("Batch and sequence must not be empty")
-
-    if tokens.size(1) > model.config.max_seq_len:
-        raise ValueError("Sequence exceeds max_seq_len")
-
-    if torch.any(tokens < 0) or torch.any(
-        tokens >= model.config.vocab_size
-    ):
+    if tokens.numel() == 0 or tokens.size(1) > model.config.max_seq_len:
+        raise ValueError("Empty batch or sequence exceeds max_seq_len")
+    if torch.any(tokens < 0) or torch.any(tokens >= model.config.vocab_size):
         raise ValueError("Dataset token ID is outside the vocabulary")
-
-    bos = torch.full(
-        (tokens.size(0), 1),
-        model.bos_token_id,
-        dtype=torch.long,
-        device=device,
-    )
-
-    inputs = torch.cat((bos, tokens[:, :-1]), dim=1)
-
-    return inputs, tokens
+    bos = torch.full((tokens.size(0), 1), model.bos_token_id, dtype=torch.long, device=device)
+    return torch.cat((bos, tokens[:, :-1]), dim=1), tokens
 
 
 @torch.no_grad()
-def evaluate(
-    model,
-    val_loader,
-    device,
-    max_batches=None,
-):
+def evaluate(model, loader, device):
     was_training = model.training
     model.eval()
-
-    total_loss = 0.0
-    total_tokens = 0
-
+    loss_sum, count, correct = 0.0, 0, 0
     try:
-        for batch_idx, batch in enumerate(val_loader):
-            if (
-                max_batches is not None
-                and batch_idx >= max_batches
-            ):
-                break
-
-            inputs, targets = prepare_batch(
-                batch,
-                model,
-                device,
-            )
-
+        for batch in loader:
+            inputs, targets = prepare_batch(batch, model, device)
             logits = model(inputs)
-
-            loss = F.cross_entropy(
-                logits.reshape(-1, model.config.vocab_size),
-                targets.reshape(-1),
-                reduction="sum",
-            )
-
-            total_loss += loss.item()
-            total_tokens += targets.numel()
-
+            loss_sum += F.cross_entropy(logits.flatten(0, 1), targets.flatten(), reduction="sum").item()
+            correct += (logits.argmax(-1) == targets).sum().item()
+            count += targets.numel()
     finally:
         model.train(was_training)
-
-    if total_tokens == 0:
-        raise ValueError("Validation loader is empty")
-
-    mean_loss = total_loss / total_tokens
-
-    return {
-        "val_loss": mean_loss,
-        "val_perplexity": math.exp(min(mean_loss, 80.0)),
-    }
+    if count == 0:
+        raise ValueError("Evaluation loader is empty")
+    nll = loss_sum / count
+    return {"nll": nll, "bits_per_token": nll / math.log(2),
+            "perplexity": math.exp(min(nll, 80)), "token_accuracy": correct / count}
 
 
-def save_checkpoint(
-    path,
-    model,
-    optimizer,
-    step,
-    epoch,
-    best_val_loss,
-):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    torch.save(
-        {
-            "model": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "step": step,
-            "epoch": epoch,
-            "best_val_loss": best_val_loss,
-            "model_config": vars(model.config).copy(),
-        },
-        path,
-    )
+def save_checkpoint(path, model, optimizer, step, epoch, best_val_loss):
+    torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "step": step,
+                "epoch": epoch, "best_val_loss": best_val_loss, "model_config": vars(model.config)}, path)
 
 
-def load_checkpoint(
-    path,
-    model,
-    optimizer=None,
-    device="cpu",
-):
-    checkpoint = torch.load(
-        path,
-        map_location=device,
-        weights_only=True,
-    )
-
+def load_checkpoint(path, model, optimizer=None, device="cpu"):
+    checkpoint = torch.load(path, map_location=device, weights_only=True)
     if checkpoint["model_config"] != vars(model.config):
-        raise ValueError(
-            "Checkpoint model configuration does not match"
-        )
-
+        raise ValueError("Checkpoint model configuration does not match")
     model.load_state_dict(checkpoint["model"])
-
     if optimizer is not None:
         optimizer.load_state_dict(checkpoint["optimizer"])
-
     return checkpoint
 
 
-def train_model(
-    model,
-    train_loader,
-    val_loader,
-    config,
-    device=None,
-):
-    if device is None:
-        device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
-    else:
-        device = torch.device(device)
+def train_model(model, train_loader, val_loader, config, device, output_dir, logger):
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config["learning_rate"], weight_decay=config["weight_decay"])
+    output_dir = Path(output_dir)
+    initial = evaluate(model, val_loader, device)
+    logger.log({f"val_initial/{k}": v for k, v in initial.items()}, 0)
+    best, step, last_eval, epoch = initial["nll"], 0, -1, -1
+    save_checkpoint(output_dir / "best.pt", model, optimizer, step, epoch, best)
 
-    model = model.to(device)
+    def validate():
+        nonlocal best, last_eval
+        metrics = evaluate(model, val_loader, device)
+        logger.log({f"val/{k}": v for k, v in metrics.items()}, step)
+        last_eval = step
+        if metrics["nll"] < best:
+            best = metrics["nll"]
+            save_checkpoint(output_dir / "best.pt", model, optimizer, step, epoch, best)
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config["learning_rate"],
-        weight_decay=config["weight_decay"],
-    )
-
-    checkpoint_dir = Path(config["checkpoint_dir"])
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-    step = 0
-    start_epoch = 0
-    best_val_loss = float("inf")
-
-    resume_from = config.get("resume_from")
-
-    if resume_from is not None:
-        checkpoint = load_checkpoint(
-            resume_from,
-            model,
-            optimizer,
-            device,
-        )
-
-        step = checkpoint["step"]
-        start_epoch = checkpoint["epoch"] + 1
-        best_val_loss = checkpoint["best_val_loss"]
-
-        print(
-            f"Resuming from step={step}, "
-            f"next_epoch={start_epoch + 1}"
-        )
-
-    model.train()
-
-    max_steps = config.get("max_steps")
-
-    if max_steps is not None and step >= max_steps:
-        return model
-
-    for epoch in range(start_epoch, config["epochs"]):
+    running_loss, running_tokens = 0.0, 0
+    for epoch in range(config["epochs"]):
         model.train()
-
         for batch in train_loader:
-            inputs, targets = prepare_batch(
-                batch,
-                model,
-                device,
-            )
-
+            inputs, targets = prepare_batch(batch, model, device)
             optimizer.zero_grad(set_to_none=True)
-
             logits = model(inputs)
-
-            loss = F.cross_entropy(
-                logits.reshape(-1, model.config.vocab_size),
-                targets.reshape(-1),
-            )
-
+            loss = F.cross_entropy(logits.flatten(0, 1), targets.flatten())
             loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(),
-                config["grad_clip"],
-            )
-
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip"], error_if_nonfinite=True)
             optimizer.step()
             step += 1
-
+            running_loss += loss.item() * targets.numel()
+            running_tokens += targets.numel()
             if step % config["log_interval"] == 0:
-                print(
-                    f"epoch={epoch + 1} "
-                    f"step={step} "
-                    f"train_loss={loss.item():.4f}"
-                )
-
+                logger.log({"train/nll": running_loss / running_tokens}, step)
+                running_loss, running_tokens = 0.0, 0
             if step % config["eval_interval"] == 0:
-                metrics = evaluate(
-                    model,
-                    val_loader,
-                    device,
-                    config.get("max_val_batches"),
-                )
-
-                print(
-                    f"step={step} "
-                    f"val_loss={metrics['val_loss']:.4f} "
-                    f"val_perplexity="
-                    f"{metrics['val_perplexity']:.2f}"
-                )
-
-                if metrics["val_loss"] < best_val_loss:
-                    best_val_loss = metrics["val_loss"]
-
-                    save_checkpoint(
-                        checkpoint_dir / "best.pt",
-                        model,
-                        optimizer,
-                        step,
-                        epoch,
-                        best_val_loss,
-                    )
-
-            if step % config["checkpoint_interval"] == 0:
-                save_checkpoint(
-                    checkpoint_dir / "latest.pt",
-                    model,
-                    optimizer,
-                    step,
-                    epoch,
-                    best_val_loss,
-                )
-
-            if max_steps is not None and step >= max_steps:
+                validate()
+            if config["max_steps"] is not None and step >= config["max_steps"]:
                 break
-
-        save_checkpoint(
-            checkpoint_dir / "latest.pt",
-            model,
-            optimizer,
-            step,
-            epoch,
-            best_val_loss,
-        )
-
-        if max_steps is not None and step >= max_steps:
+        save_checkpoint(output_dir / "latest.pt", model, optimizer, step, epoch, best)
+        if config["max_steps"] is not None and step >= config["max_steps"]:
             break
-
-    return model
+    if last_eval != step:
+        validate()
+    save_checkpoint(output_dir / "latest.pt", model, optimizer, step, epoch, best)
+    return {"steps": step, "epochs_started": epoch + 1, "initial_val": initial, "best_val_nll": best}
