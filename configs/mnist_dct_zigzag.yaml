@@ -4,4 +4,5 @@ experiment:
 tokenizer:
   max_tokens: null
   quantization:
+    method: uniform
     num_bins: 256

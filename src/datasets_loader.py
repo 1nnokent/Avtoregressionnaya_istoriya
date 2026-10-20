@@ -18,12 +18,14 @@ def train_val_indices(n, val_fraction=0.1, seed=0):
     return permutation[n_val:], permutation[:n_val]
 
 
-def load_images(ds_name, split="train", gray=True, size=28, limit=None,
+def load_images(ds_name, split="train", gray=True, size=None, limit=None,
                 val_fraction=0.1, seed=0, root=DATA_DIR, download=True, return_labels=False):
     if ds_name not in DATASETS or split not in SPLITS:
         raise ValueError(f"Expected dataset in {DATASETS} and split in {SPLITS}")
     if limit is not None and limit < 1:
         raise ValueError("limit must be positive")
+    if size is None:
+        size = {"mnist": 28, "cifar10": 32, "celeba": 64, "imagenet": 64}.get(ds_name)
     root = Path(root)
     if ds_name == "npz":
         # Local dataset: uint8 NCHW/NHW arrays; labels are optional except for classifier training.
@@ -69,7 +71,8 @@ def load_images(ds_name, split="train", gray=True, size=28, limit=None,
             image = image.convert("L")
         elif ds_name != "mnist":
             image = image.convert("RGB")
-        image = image.resize((size, size), Image.Resampling.BILINEAR)
+        if size is not None:
+            image = image.resize((size, size), Image.Resampling.BILINEAR)
         array = np.asarray(image, dtype=np.float32) / 255.0
         images.append(array[None] if array.ndim == 2 else array.transpose(2, 0, 1))
         targets.append(int(label))
