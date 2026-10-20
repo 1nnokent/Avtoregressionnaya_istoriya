@@ -1,0 +1,8 @@
+data/
+.venv
+__pycache__/
+.ipynb_checkpoints/
+.mypy_cache/
+
+.claude
+.vscode

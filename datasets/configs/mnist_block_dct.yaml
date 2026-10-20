@@ -1,0 +1,9 @@
+# JPEG-like: DCT of every 7x7 block (28 = 4 * 7), blocks one after another, zigzag inside every block
+data:
+  ds_name: mnist
+
+tokenizer:
+  decomposition: block_dct
+  decomposition_params: {block_size: 7}
+  ordering: block
+  ordering_params: {block_size: 7}

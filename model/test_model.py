@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from src.model import ImageTokenTransformer, ModelConfig
+from model.src.model import ImageTokenTransformer, ModelConfig
 
 
 def main():

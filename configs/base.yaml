@@ -1,0 +1,68 @@
+# Paths are relative to the repository root, except extends (relative to YAML).
+experiment:
+  name: mnist_dct
+  seed: 0
+  device: auto             # auto | cpu | cuda
+  output_dir: runs
+  checkpoint: null         # existing latest.pt/best.pt for resume/evaluate
+data:
+  target: datasets.src.datasets_loader:load_images
+  params:
+    ds_name: mnist         # mnist | cifar10 | celeba | imagenet
+    root: data
+    gray: true            # original metrics support grayscale only
+    size: 64              # used by CelebA and ImageNet only
+    val_fraction: 0.1
+  train_limit: null
+  val_limit: null
+  batch_size: 128
+  num_workers: 0
+  evaluation_split: test
+tokenizer:
+  target: datasets.src.tokenizer:Tokenizer
+  params:
+    decomposition: dct    # dct | block_dct | dft | wavelet
+    decomposition_params: {}
+    ordering: zigzag      # zigzag | dyadic | radial | block
+    ordering_params: {}
+    normalization:
+      transform: signed_log
+      log_scale: 255.0
+      scaling: minmax
+      per_position: false
+    quantization:
+      method: uniform
+      num_bins: 256
+      per_position: false
+model:
+  target: model.src.model:ImageTokenTransformer
+  config_target: model.src.model:ModelConfig
+  params:
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    d_ff: 512
+    dropout: 0.1
+    # vocab_size and max_seq_len are derived from the fitted tokenizer.
+training:
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  epochs: 20
+  max_steps: 10000
+  eval_interval: 200
+  checkpoint_interval: 500
+  log_interval: 20
+  grad_clip: 1.0
+  max_val_batches: null
+  # checkpoint_dir and resume_from are set by the launcher per run.
+metrics:
+  enabled: true
+  names: [fid, is, precision, recall]
+  encoders: [inception]    # inception | clip; download pretrained weights
+  batch_size: 100
+  k: 3
+generation:
+  num_images: 200
+  batch_size: 50
+  temperature: 0.7
+  top_k: null

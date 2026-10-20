@@ -1,1 +1,11 @@
-torch>=2.2
+# Python 3.12; common environment for the three components.
+torch==2.9.1
+torchvision==0.24.1
+numpy==2.2.6
+scipy==1.15.3
+PyWavelets==1.8.0
+PyYAML==6.0.2
+pyarrow==19.0.1
+Pillow==11.2.1
+transformers==4.57.6
+matplotlib==3.10.3

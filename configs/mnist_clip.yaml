@@ -1,0 +1,5 @@
+extends: base.yaml
+experiment:
+  name: mnist_clip
+metrics:
+  encoders: [clip]

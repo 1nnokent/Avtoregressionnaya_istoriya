@@ -1,0 +1,6 @@
+extends: base.yaml
+experiment:
+  name: cifar10_dct
+data:
+  params:
+    ds_name: cifar10
