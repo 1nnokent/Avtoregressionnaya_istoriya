@@ -74,7 +74,7 @@ Validation NLL снижается вместе с train NLL. По этому к�
 Из корня проекта, после настройки окружения:
 
 ```powershell
-.venv/Scripts/python.exe run_experiment.py train --config configs/mnist_baseline.yaml --run-id reproduction
+.venv/Scripts/python.exe run_experiment.py train --config 1. configs/mnist_baseline.yaml --run-id reproduction
 .venv/Scripts/python.exe run_experiment.py evaluate --run-dir runs/mnist_dct64_baseline/reproduction --device cpu
 .venv/Scripts/tensorboard.exe --logdir runs
 ```
