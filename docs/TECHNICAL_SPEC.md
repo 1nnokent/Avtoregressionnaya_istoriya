@@ -48,8 +48,8 @@
 | `src/datasets_loader.py` | Загрузка наборов и разбиение train/val |
 | `src/decomposition.py` | Прямые и обратные разложения |
 | `src/ordering.py` | Порядок обхода коэффициентов |
-| `src/normalization.py` | Прямая и обратная signed-log-нормализация |
-| `src/tokenizer.py` | Подбор параметров токенизатора, encode/decode и сериализация |
+| `src/normalization.py` | Normalizer из data/baseline: signed log, minmax/standard |
+| `src/tokenizer.py` | Tokenizer из data/baseline и адаптер ImageTokenizer для общего запуска |
 | `src/model.py` | Transformer с causal attention и RoPE |
 | `src/train.py` | Обучение, validation, сохранение и загрузка checkpoint |
 | `src/generation.py` | Генерация изображений батчами |
@@ -65,7 +65,7 @@
 | `data/` | Локальные данные и кэш; исключены из Git |
 | `runs/` | Полные результаты запусков; исключены из Git |
 
-`src/pipeline.py` и `src/quantization.py` сохраняют прежний DCT API для совместимости. Основной runner использует `ImageTokenizer` из `src/tokenizer.py`.
+`src/pipeline.py` сохраняет прежний DCT API для совместимости. Основной runner использует `ImageTokenizer` — адаптер над `Tokenizer`, `Normalizer` и `Quantizer` из актуальной ветки данных. Адаптер добавляет усечение, сериализацию и чтение старого формата состояния. В `Quantizer` также сохранена поддержка квантильного квантования общего запуска.
 
 ## 3. Окружение
 
@@ -280,6 +280,8 @@ training:
 | `max_tokens` | `64` | Число сохраняемых токенов; `null` — полная последовательность |
 | `normalization.transform` | `signed_log` | `signed_log` или `none` |
 | `normalization.log_scale` | `255.0` | Положительный масштаб signed log |
+| `normalization.scaling` | `minmax` | `minmax` или `standard` после signed log/none |
+| `normalization.per_position` | `false` | Отдельные параметры нормализации для каждой позиции |
 | `quantization.method` | `uniform` | `uniform` или `quantile` |
 | `quantization.num_bins` | `64` | Целый размер словаря, не менее 2 |
 | `quantization.per_position` | `true` | Отдельные параметры квантования для каждой позиции |

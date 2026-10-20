@@ -101,6 +101,8 @@ def validate(c):
         raise ValueError("Unknown ordering")
     if t["normalization"]["transform"] not in ("none", "signed_log"):
         raise ValueError("normalization.transform must be none or signed_log")
+    if t["normalization"]["scaling"] not in ("minmax", "standard"):
+        raise ValueError("normalization.scaling must be minmax or standard")
     positive(t["normalization"]["log_scale"], "log_scale")
     if t["quantization"]["method"] not in ("uniform", "quantile"):
         raise ValueError("quantization.method must be uniform or quantile")

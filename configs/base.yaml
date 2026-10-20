@@ -25,6 +25,8 @@ tokenizer:
   normalization:
     transform: signed_log
     log_scale: 255.0
+    scaling: minmax
+    per_position: false
   quantization:
     method: uniform
     num_bins: 64
