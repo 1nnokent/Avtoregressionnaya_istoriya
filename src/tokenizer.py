@@ -143,6 +143,8 @@ class ImageTokenizer:
         return list(self.core.image_shape)
 
     def fit(self, train_images):
+        if self.config["quantization"]["method"] != "uniform":
+            raise ValueError("Only uniform quantization can be fitted; old quantile states are for evaluation")
         images = _as_nchw(train_images)
         if len(images) == 0 or not np.isfinite(images).all():
             raise ValueError("fit requires finite, nonempty training images")
@@ -171,7 +173,14 @@ class ImageTokenizer:
     @classmethod
     def load(cls, path):
         state = json.loads(Path(path).read_text(encoding="utf-8"))
-        obj = cls(state["config"])
+        config = copy.deepcopy(state["config"])
+        legacy_quantile = config["quantization"]["method"] == "quantile"
+        if legacy_quantile:
+            # Encoding/decoding use saved thresholds and centers, irrespective of their original fit method.
+            config["quantization"]["method"] = "uniform"
+        obj = cls(config)
+        if legacy_quantile:
+            obj.config["quantization"]["method"] = "quantile"
         obj.core.image_shape = tuple(state["shape"])
         if "normalizer" in state:
             obj.core.normalizer.offset = np.asarray(state["normalizer"]["offset"])

@@ -37,7 +37,7 @@ def _read(path, seen=None):
     return merge(_read(path.parent / parent, seen), data) if parent else data
 
 
-def load_config(path, overrides=()):
+def load_config(path, overrides=(), *, allow_legacy_quantile=False):
     defaults = _read(PROJECT_ROOT / "configs/base.yaml")
     config = merge(defaults, _read(path))
     for override in overrides:
@@ -53,11 +53,11 @@ def load_config(path, overrides=()):
         if parts[-1] not in cursor:
             raise ValueError(f"Unknown config key: {key}")
         cursor[parts[-1]] = yaml.safe_load(raw)
-    validate(config)
+    validate(config, allow_legacy_quantile=allow_legacy_quantile)
     return config
 
 
-def validate(c):
+def validate(c, *, allow_legacy_quantile=False):
     def positive(value, name):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             raise ValueError(f"{name} must be positive")
@@ -104,8 +104,9 @@ def validate(c):
     if t["normalization"]["scaling"] not in ("minmax", "standard"):
         raise ValueError("normalization.scaling must be minmax or standard")
     positive(t["normalization"]["log_scale"], "log_scale")
-    if t["quantization"]["method"] not in ("uniform", "quantile"):
-        raise ValueError("quantization.method must be uniform or quantile")
+    method = t["quantization"]["method"]
+    if method != "uniform" and not (allow_legacy_quantile and method == "quantile"):
+        raise ValueError("quantization.method must be uniform; quantile is only supported for loading old runs")
     if not isinstance(t["quantization"]["num_bins"], int) or t["quantization"]["num_bins"] < 2:
         raise ValueError("num_bins must be an integer >= 2")
     if not set(c["metrics"]["encoders"]) <= {"mnist", "pixels", "inception", "clip"}:

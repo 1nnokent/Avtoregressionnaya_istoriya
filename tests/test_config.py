@@ -12,7 +12,8 @@ def test_inheritance_and_cli_overrides():
 
 
 @pytest.mark.parametrize("override", ["training.typo=3", "training.batch_size=0", "tokenizer.quantization.num_bins=1",
-                                     "runtime.device=magic", "metrics.encoders=[pixels]", "tokenizer.max_tokens=0"])
+                                     "runtime.device=magic", "metrics.encoders=[pixels]", "tokenizer.max_tokens=0",
+                                     "tokenizer.quantization.method=quantile"])
 def test_rejects_bad_config(override):
     with pytest.raises(ValueError):
         load_config(PROJECT_ROOT / "configs/base.yaml", [override])
@@ -38,3 +39,12 @@ def test_new_model_config_replaces_architecture_parameters(tmp_path):
                     "  config_class: custom.ModelConfig\n  class_path: custom.Model\n  params:\n    hidden_size: 16\n")
     config = load_config(path)
     assert config["model"]["params"] == {"hidden_size": 16}
+
+
+def test_legacy_quantile_config_is_only_allowed_for_evaluation(tmp_path):
+    path = tmp_path / "old_run.yaml"
+    path.write_text(f"extends: {str(PROJECT_ROOT / 'configs/base.yaml')}\ntokenizer:\n"
+                    "  quantization:\n    method: quantile\n")
+    with pytest.raises(ValueError, match="must be uniform"):
+        load_config(path)
+    assert load_config(path, allow_legacy_quantile=True)["tokenizer"]["quantization"]["method"] == "quantile"

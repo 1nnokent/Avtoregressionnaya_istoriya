@@ -162,7 +162,7 @@ def run_experiment(config_path, overrides=(), run_id=None):
 
 def evaluate_run(run_dir, device_override=None):
     output_dir = Path(run_dir).resolve()
-    config = load_config(output_dir / "config.yaml")
+    config = load_config(output_dir / "config.yaml", allow_legacy_quantile=True)
     if device_override:
         config["runtime"]["device"] = device_override
     device = setup_runtime(config["runtime"])
