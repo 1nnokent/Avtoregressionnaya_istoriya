@@ -4,26 +4,6 @@ import numpy as np
 
 METHODS = ("uniform",)
 
-
-def fit_uniform_range(values: np.ndarray) -> tuple[float, float]:
-    values = np.asarray(values)
-    return float(values.min()), float(values.max())
-
-
-def quantize_uniform(x: np.ndarray, low: float, high: float, num_bins: int) -> np.ndarray:
-    """real values -> integer tokens in [0, num_bins - 1]"""
-    x = np.asarray(x, dtype=np.float64)
-    bins = np.floor((x - low) / (high - low) * num_bins)
-    return np.clip(bins, 0, num_bins - 1).astype(np.int64)
-
-
-def dequantize_uniform(tokens: np.ndarray, low: float, high: float, num_bins: int) -> np.ndarray:
-    """integer tokens -> centers of their bins"""
-    tokens = np.asarray(tokens)
-    bin_width = (high - low) / num_bins
-    return low + (tokens + 0.5) * bin_width
-
-
 @dataclass
 class Quantizer:
     method: str = "uniform"
@@ -37,7 +17,6 @@ class Quantizer:
             raise ValueError(f"unknown quantization {self.method!r}, expected one of {METHODS}")
 
     def fit(self, sequences: np.ndarray) -> "Quantizer":
-        """sequences: (N, L) normalized train values"""
         sequences = np.asarray(sequences, dtype=np.float64)
         if self.per_position:
             columns = sequences.T
@@ -49,7 +28,6 @@ class Quantizer:
         return self
 
     def encode(self, sequences: np.ndarray) -> np.ndarray:
-        """(N, L) values -> (N, L) int64 tokens in [0, num_bins - 1]"""
         self._check_fitted()
         sequences = np.asarray(sequences)
         if not self.per_position:
@@ -60,7 +38,6 @@ class Quantizer:
         return tokens
 
     def decode(self, tokens: np.ndarray) -> np.ndarray:
-        """(N, L) tokens -> (N, L) bin centers"""
         self._check_fitted()
         tokens = np.asarray(tokens)
         if not self.per_position:
