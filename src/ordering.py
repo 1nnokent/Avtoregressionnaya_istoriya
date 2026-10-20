@@ -2,30 +2,40 @@ from functools import lru_cache
 
 import numpy as np
 
-from .decomposition import check_2d
+ORDERINGS = ("zigzag", "dyadic", "radial", "block")
+
+
+def _zigzag_key(i: int, j: int) -> tuple:
+    return i + j, i if (i + j) % 2 else -i
+
+
+_SORT_KEYS = {
+    "zigzag": lambda i, j, h, w, b: _zigzag_key(i, j),
+    "radial": lambda i, j, h, w, b: ((i / h) ** 2 + (j / w) ** 2, i),
+    "dyadic": lambda i, j, h, w, b: (max(i, j).bit_length(), *_zigzag_key(i, j)),
+    "block": lambda i, j, h, w, b: (i // b, j // b, *_zigzag_key(i % b, j % b)),
+}
 
 
 @lru_cache
-def zigzag_indices(height: int, width: int) -> np.ndarray:
-    """flat indices of an (H, W) matrix in zigzag order"""
-    positions = [(i, j) for i in range(height) for j in range(width)]
-    positions.sort(key=lambda p: (p[0] + p[1], p[0] if (p[0] + p[1]) % 2 else -p[0]))
+def ordering_indices(name: str, height: int, width: int, block_size: int = 8) -> np.ndarray:
+    if name not in _SORT_KEYS:
+        raise ValueError(f"unknown ordering {name!r}, expected one of {ORDERINGS}")
+    key = _SORT_KEYS[name]
+    positions = sorted(
+        ((i, j) for i in range(height) for j in range(width)),
+        key=lambda p: key(p[0], p[1], height, width, block_size),
+    )
     indices = np.array([i * width + j for i, j in positions])
     indices.flags.writeable = False
     return indices
 
 
-def zigzag(matrix: np.ndarray) -> np.ndarray:
-    matrix = np.asarray(matrix)
-    check_2d(matrix, "matrix")
-    return matrix.reshape(-1)[zigzag_indices(*matrix.shape)]
+def forward_ordering(coeffs: np.ndarray, indices: np.ndarray) -> np.ndarray:
+    return coeffs.reshape(*coeffs.shape[:-2], -1)[..., indices]
 
 
-def inverse_zigzag(sequence: np.ndarray, height: int, width: int) -> np.ndarray:
-    sequence = np.asarray(sequence)
-    if sequence.shape != (height * width,):
-        raise ValueError(f"expected sequence of shape ({height * width},), got {sequence.shape}")
-    
+def invert_ordering(sequence: np.ndarray, indices: np.ndarray, height: int, width: int) -> np.ndarray:
     flat = np.empty_like(sequence)
-    flat[zigzag_indices(height, width)] = sequence
-    return flat.reshape(height, width)
+    flat[..., indices] = sequence
+    return flat.reshape(*sequence.shape[:-1], height, width)
