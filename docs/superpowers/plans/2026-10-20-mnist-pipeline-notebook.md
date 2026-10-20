@@ -74,11 +74,11 @@ git commit -m "test: define MNIST notebook contract"
 
 **Interfaces:**
 - Consumes: `load_images(...)`, `get_decomposition(...)`, `DECOMPOSITIONS`, `ordering_indices(...)`, `ORDERINGS`, `forward_ordering(...)`, `invert_ordering(...)`.
-- Produces: `decomposition_results`, фиксированный `SELECTED_DECOMPOSITION = "dct"`, `ordering_results`, `selected_ordering`.
+- Produces: `decomposition_results`, выбранный по validation MSE `SELECTED_DECOMPOSITION`, `ordering_results`, `selected_ordering`.
 
 - [ ] **Step 1: Добавить падающий тест покрытия вариантов**
 
-Добавить `test_notebook_covers_all_decompositions_and_orderings()`, который проверяет ссылки на `DECOMPOSITIONS`/`ORDERINGS`, `block_size=7`, доли `(0.05, 0.10, 0.25, 0.50)` и явную фиксацию DCT.
+Добавить `test_notebook_covers_all_decompositions_and_orderings()`, который проверяет ссылки на `DECOMPOSITIONS`/`ORDERINGS`, `block_size=7`, доли `(0.05, 0.10, 0.25, 0.50)` и выбор победителей по минимальному validation MSE.
 
 - [ ] **Step 2: Запустить тест и увидеть FAIL**
 
@@ -87,7 +87,7 @@ Expected: FAIL из-за отсутствующих экспериментов.
 
 - [ ] **Step 3: Реализовать секции загрузки, разложений и порядков**
 
-Добавить функции `mse(original, restored) -> float`, `psnr(original, restored, data_range=1.0) -> float`, `keep_largest(coeffs, fraction) -> np.ndarray`, `reconstruct_prefix(coeffs, order, fraction) -> np.ndarray`; визуализации коэффициентов, карт обхода, реконструкций и validation-графиков. Для `block_dct` передавать `block_size=7`; DCT фиксировать вручную, порядок выбирать по validation MSE при доле 0.25.
+Добавить функции `mse(original, restored) -> float`, `psnr(original, restored, data_range=1.0) -> float`, `keep_largest(coeffs, fraction) -> np.ndarray`, `reconstruct_prefix(coeffs, order, fraction) -> np.ndarray`; визуализации коэффициентов, карт обхода, реконструкций и validation-графиков. Для `block_dct` передавать `block_size=7`; разложение и порядок выбирать по validation MSE при доле 0.25.
 
 - [ ] **Step 4: Запустить тесты ноутбука**
 
@@ -108,7 +108,7 @@ git commit -m "feat: compare MNIST decompositions and orderings"
 - Modify: `tests/test_mnist_pipeline_notebook.py`
 
 **Interfaces:**
-- Consumes: DCT-последовательности в выбранном порядке, `Normalizer`, `Quantizer`.
+- Consumes: последовательности выбранного разложения в выбранном порядке, `Normalizer`, `Quantizer`.
 - Produces: `normalization_results`, `selected_normalization`, `quantization_results`, `selected_quantization`.
 
 - [ ] **Step 1: Добавить падающий тест матрицы конфигураций**
@@ -162,7 +162,7 @@ Expected: FAIL из-за отсутствующего финального ра�
 
 - [ ] **Step 3: Собрать и визуализировать итоговый Tokenizer**
 
-Сформировать `TokenizerConfig` с DCT и выбранными validation-конфигурациями, вызвать `fit(train_images)`, затем `encode/decode(test_images)`, проверить контракт токенов и показать итоговую таблицу и галерею `оригинал / реконструкция / |ошибка|`.
+Сформировать `TokenizerConfig` со всеми выбранными validation-конфигурациями, вызвать `fit(train_images)`, затем `encode/decode(test_images)`, проверить контракт токенов и показать итоговую таблицу и галерею `оригинал / реконструкция / |ошибка|`.
 
 - [ ] **Step 4: Исключить временные макеты**
 

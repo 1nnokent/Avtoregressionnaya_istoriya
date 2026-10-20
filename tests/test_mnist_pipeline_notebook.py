@@ -40,9 +40,15 @@ def test_notebook_covers_all_decompositions_and_orderings(monkeypatch):
             """
 assert tuple(FRACTIONS) == (0.05, 0.10, 0.25, 0.50)
 assert set(decomposition_results) == set(DECOMPOSITIONS)
-assert SELECTED_DECOMPOSITION == "dct"
+assert SELECTED_DECOMPOSITION == min(
+    DECOMPOSITIONS,
+    key=lambda name: decomposition_results[name]["mse_by_fraction"][0.25],
+)
 assert set(ordering_results) == set(ORDERINGS)
-assert selected_ordering in ORDERINGS
+assert selected_ordering == min(
+    ORDERINGS,
+    key=lambda name: ordering_results[name]["mse_by_fraction"][0.25],
+)
 for result in (*decomposition_results.values(), *ordering_results.values()):
     assert set(result["mse_by_fraction"]) == set(FRACTIONS)
     assert all(np.isfinite(value) for value in result["mse_by_fraction"].values())
@@ -73,7 +79,10 @@ expected_normalization = {
     for per_position in (False, True)
 }
 assert set(normalization_results) == expected_normalization
-assert selected_normalization["key"] in expected_normalization
+assert selected_normalization["key"] == min(
+    normalization_results,
+    key=lambda key: normalization_results[key]["mse"],
+)
 assert selected_normalization["config"]["log_scale"] == 255.0
 
 expected_quantization = {
@@ -82,7 +91,10 @@ expected_quantization = {
     for per_position in (False, True)
 }
 assert set(quantization_results) == expected_quantization
-assert selected_quantization["key"] in expected_quantization
+assert selected_quantization["key"] == min(
+    quantization_results,
+    key=lambda key: quantization_results[key]["mse"],
+)
 for result in (*normalization_results.values(), *quantization_results.values()):
     assert np.isfinite(result["mse"])
     assert np.isfinite(result["psnr"])
@@ -114,6 +126,12 @@ assert test_reconstruction.shape == (len(test_images), 1, 28, 28)
 assert np.isfinite(test_reconstruction).all()
 assert np.isfinite(final_metrics["mse"])
 assert np.isfinite(final_metrics["psnr"])
+assert final_config.decomposition == SELECTED_DECOMPOSITION
+assert final_config.decomposition_params == selected_decomposition_params
+assert final_config.ordering == selected_ordering
+assert final_config.ordering_params == final_ordering_params
+assert final_config.normalization == selected_normalization["config"]
+assert final_config.quantization == selected_quantization["config"]
 
 train_fitted_reference = Tokenizer(final_config).fit(train_images)
 np.testing.assert_allclose(final_tokenizer.normalizer.offset, train_fitted_reference.normalizer.offset)
