@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import nbformat
@@ -122,10 +123,26 @@ np.testing.assert_allclose(final_tokenizer.quantizer.thresholds, train_fitted_re
         )
     )
 
-    NotebookClient(
+    executed = NotebookClient(
         notebook,
         timeout=600,
         kernel_name="python3",
         resources={"metadata": {"path": str(NOTEBOOK.parent.parent)}},
     ).execute()
+
+    final_cell = next(cell for cell in executed.cells if cell.id == "fit-final-tokenizer")
+    output = "".join(
+        part
+        for item in final_cell.outputs
+        if item.output_type == "stream"
+        for part in item.text
+    )
+    token_line = next(
+        (line for line in output.splitlines() if line.startswith("Первые 32 токена первой test-цифры:")),
+        None,
+    )
+    assert token_line is not None
+    shown_tokens = ast.literal_eval(token_line.split(":", maxsplit=1)[1].strip())
+    assert len(shown_tokens) == 32
+    assert all(isinstance(token, int) and token >= 0 for token in shown_tokens)
 
