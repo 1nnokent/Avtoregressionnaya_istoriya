@@ -4,3 +4,7 @@ numpy==2.5.4
 matplotlib==3.11.2
 jupyter==1.1.1
 scipy==1.18.1
+PyWavelets==1.10.0
+PyYAML==6.0.3
+pytest==9.1.1
+pyarrow==26.0.0
