@@ -96,3 +96,36 @@ for result in (*normalization_results.values(), *quantization_results.values()):
         resources={"metadata": {"path": str(NOTEBOOK.parent.parent)}},
     ).execute()
 
+
+def test_notebook_final_tokenizer_contract(monkeypatch):
+    monkeypatch.setenv("MNIST_TRAIN_LIMIT", "200")
+    monkeypatch.setenv("MNIST_VAL_LIMIT", "80")
+    monkeypatch.setenv("MNIST_TEST_LIMIT", "80")
+    notebook = nbformat.read(NOTEBOOK, as_version=4)
+    notebook.cells.append(
+        nbformat.v4.new_code_cell(
+            """
+assert psnr(test_images, test_images) == float("inf")
+assert np.issubdtype(test_tokens.dtype, np.integer)
+assert test_tokens.shape == (len(test_images), 28 * 28)
+assert 0 <= test_tokens.min() <= test_tokens.max() < final_tokenizer.vocab_size
+assert test_reconstruction.shape == (len(test_images), 1, 28, 28)
+assert np.isfinite(test_reconstruction).all()
+assert np.isfinite(final_metrics["mse"])
+assert np.isfinite(final_metrics["psnr"])
+
+train_fitted_reference = Tokenizer(final_config).fit(train_images)
+np.testing.assert_allclose(final_tokenizer.normalizer.offset, train_fitted_reference.normalizer.offset)
+np.testing.assert_allclose(final_tokenizer.normalizer.spread, train_fitted_reference.normalizer.spread)
+np.testing.assert_allclose(final_tokenizer.quantizer.thresholds, train_fitted_reference.quantizer.thresholds)
+"""
+        )
+    )
+
+    NotebookClient(
+        notebook,
+        timeout=600,
+        kernel_name="python3",
+        resources={"metadata": {"path": str(NOTEBOOK.parent.parent)}},
+    ).execute()
+
