@@ -1,0 +1,34 @@
+{
+  "training": {
+    "steps": 400,
+    "epochs_started": 7,
+    "initial_val": {
+      "nll": 4.166822373867035,
+      "bits_per_token": 6.01145397504315,
+      "perplexity": 64.51013697570471,
+      "token_accuracy": 0.016357421875
+    },
+    "best_val_nll": 3.3545265793800354
+  },
+  "selected_checkpoint_step": 400,
+  "evaluation_samples": {
+    "real": 256,
+    "fake": 256
+  },
+  "metrics": {
+    "mnist/frechet": 141.55011466446626,
+    "mnist/classifier_score_fake": 1.8685968607990415,
+    "mnist/classifier_score_real": 6.087527974860314,
+    "mnist/precision": 0.80859375,
+    "mnist/recall": 0.078125,
+    "mnist/encoder_val_accuracy": 0.875,
+    "mnist/encoder_test_accuracy": 0.90625,
+    "tokenizer/test_reconstruction_mse": 0.024312440305948257,
+    "tokenizer/test_reconstruction_psnr": 16.141714476470952,
+    "test/nll": 3.369014412164688,
+    "test/bits_per_token": 4.860460385113442,
+    "test/perplexity": 29.049881733820346,
+    "test/token_accuracy": 0.087432861328125
+  },
+  "elapsed_seconds": 58.397949300000164
+}

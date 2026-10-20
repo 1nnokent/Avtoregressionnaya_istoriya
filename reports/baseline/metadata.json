@@ -1,0 +1,54 @@
+{
+  "status": "completed",
+  "started_utc": "2026-10-20T13:06:19.656005+00:00",
+  "python": "3.12.6",
+  "platform": "Windows-11-10.0.26100-SP0",
+  "device": "cpu",
+  "packages": {
+    "torch": "2.9.1+cpu",
+    "torchvision": "0.24.1+cpu",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "PyWavelets": "1.8.0",
+    "PyYAML": "6.0.2",
+    "tensorboard": "2.19.0"
+  },
+  "git_commit": "07c1ac42afbfd576b78d3c81ea965a84dfeed3ba",
+  "git_dirty": false,
+  "data": {
+    "train": {
+      "count": 4096,
+      "shape": [
+        4096,
+        1,
+        28,
+        28
+      ],
+      "sha256": "49124ffcbbcee1ae8312d003102b4970337a86fc330050bd55814513f7172d85"
+    },
+    "val": {
+      "count": 512,
+      "shape": [
+        512,
+        1,
+        28,
+        28
+      ],
+      "sha256": "5ec66b9e58616e7954180d3cb79542a0d20113b045c9e34538e3ae689b437117"
+    },
+    "test": {
+      "count": 512,
+      "shape": [
+        512,
+        1,
+        28,
+        28
+      ],
+      "sha256": "a6cd4b198232f8c39a1fb91a50b0e872f853e4763d866efb24569ac3ef7eaf78"
+    }
+  },
+  "parameters": 75328,
+  "sequence_length": 64,
+  "vocab_size": 64,
+  "elapsed_seconds": 58.397949300000164
+}

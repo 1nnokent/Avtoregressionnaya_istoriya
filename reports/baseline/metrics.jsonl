@@ -1,0 +1,32 @@
+{"step": 0, "time_unix": 1792501581.4682386, "val_initial/nll": 4.166822373867035, "val_initial/bits_per_token": 6.01145397504315, "val_initial/perplexity": 64.51013697570471, "val_initial/token_accuracy": 0.016357421875}
+{"step": 20, "time_unix": 1792501583.297657, "train/nll": 3.899285137653351}
+{"step": 40, "time_unix": 1792501585.1000679, "train/nll": 3.7780719876289366}
+{"step": 60, "time_unix": 1792501586.8649583, "train/nll": 3.738620102405548}
+{"step": 80, "time_unix": 1792501591.2900817, "train/nll": 3.7083543300628663}
+{"step": 100, "time_unix": 1792501593.0746934, "train/nll": 3.6586771488189695}
+{"step": 100, "time_unix": 1792501593.3373966, "val/nll": 3.641625791788101, "val/bits_per_token": 5.2537554705860385, "val/perplexity": 38.1538164901851, "val/token_accuracy": 0.057220458984375}
+{"step": 120, "time_unix": 1792501595.046268, "train/nll": 3.6352915167808533}
+{"step": 140, "time_unix": 1792501596.7487617, "train/nll": 3.597771155834198}
+{"step": 160, "time_unix": 1792501598.4857764, "train/nll": 3.567847228050232}
+{"step": 180, "time_unix": 1792501600.363712, "train/nll": 3.53736572265625}
+{"step": 200, "time_unix": 1792501602.0532374, "train/nll": 3.516374635696411}
+{"step": 200, "time_unix": 1792501602.32344, "val/nll": 3.511753886938095, "val/bits_per_token": 5.066389917508132, "val/perplexity": 33.506983739435334, "val/token_accuracy": 0.0697021484375}
+{"step": 220, "time_unix": 1792501605.889962, "train/nll": 3.4861995935440064}
+{"step": 240, "time_unix": 1792501607.772981, "train/nll": 3.4681352615356444}
+{"step": 260, "time_unix": 1792501610.078645, "train/nll": 3.4590278387069704}
+{"step": 280, "time_unix": 1792501613.067775, "train/nll": 3.436387300491333}
+{"step": 300, "time_unix": 1792501614.7190566, "train/nll": 3.417870843410492}
+{"step": 300, "time_unix": 1792501614.963363, "val/nll": 3.452278822660446, "val/bits_per_token": 4.980585537218215, "val/perplexity": 31.57225797000268, "val/token_accuracy": 0.077545166015625}
+{"step": 320, "time_unix": 1792501616.7605424, "train/nll": 3.405052375793457}
+{"step": 340, "time_unix": 1792501618.5741563, "train/nll": 3.37969788312912}
+{"step": 360, "time_unix": 1792501620.2008011, "train/nll": 3.360885667800903}
+{"step": 380, "time_unix": 1792501621.754075, "train/nll": 3.361755061149597}
+{"step": 400, "time_unix": 1792501623.3564048, "train/nll": 3.3286529064178465}
+{"step": 400, "time_unix": 1792501623.5904593, "val/nll": 3.3545265793800354, "val/bits_per_token": 4.8395588606017945, "val/perplexity": 28.63204598063273, "val/token_accuracy": 0.088623046875}
+{"step": 1, "time_unix": 1792501630.735111, "encoder/val_accuracy": 0.59375}
+{"step": 2, "time_unix": 1792501632.3202014, "encoder/val_accuracy": 0.73828125}
+{"step": 3, "time_unix": 1792501634.063398, "encoder/val_accuracy": 0.798828125}
+{"step": 4, "time_unix": 1792501635.5336156, "encoder/val_accuracy": 0.82421875}
+{"step": 5, "time_unix": 1792501636.1552126, "encoder/val_accuracy": 0.875}
+{"step": 400, "time_unix": 1792501638.0501726, "mnist/frechet": 141.55011466446626, "mnist/classifier_score_fake": 1.8685968607990415, "mnist/classifier_score_real": 6.087527974860314, "mnist/precision": 0.80859375, "mnist/recall": 0.078125, "mnist/encoder_val_accuracy": 0.875, "mnist/encoder_test_accuracy": 0.90625, "tokenizer/test_reconstruction_mse": 0.024312440305948257, "tokenizer/test_reconstruction_psnr": 16.141714476470952, "test/nll": 3.369014412164688, "test/bits_per_token": 4.860460385113442, "test/perplexity": 29.049881733820346, "test/token_accuracy": 0.087432861328125}
+{"step": 400, "time_unix": 1792501654.870291, "mnist/frechet": 141.55011466446626, "mnist/classifier_score_fake": 1.8685968607990415, "mnist/classifier_score_real": 6.087527974860314, "mnist/precision": 0.80859375, "mnist/recall": 0.078125, "mnist/encoder_val_accuracy": 0.875, "mnist/encoder_test_accuracy": 0.90625, "tokenizer/test_reconstruction_mse": 0.024312440305948257, "tokenizer/test_reconstruction_psnr": 16.141714476470952, "test/nll": 3.369014412164688, "test/bits_per_token": 4.860460385113442, "test/perplexity": 29.049881733820346, "test/token_accuracy": 0.087432861328125}

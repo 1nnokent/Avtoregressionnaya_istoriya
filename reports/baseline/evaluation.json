@@ -1,0 +1,15 @@
+{
+  "mnist/frechet": 141.55011466446626,
+  "mnist/classifier_score_fake": 1.8685968607990415,
+  "mnist/classifier_score_real": 6.087527974860314,
+  "mnist/precision": 0.80859375,
+  "mnist/recall": 0.078125,
+  "mnist/encoder_val_accuracy": 0.875,
+  "mnist/encoder_test_accuracy": 0.90625,
+  "tokenizer/test_reconstruction_mse": 0.024312440305948257,
+  "tokenizer/test_reconstruction_psnr": 16.141714476470952,
+  "test/nll": 3.369014412164688,
+  "test/bits_per_token": 4.860460385113442,
+  "test/perplexity": 29.049881733820346,
+  "test/token_accuracy": 0.087432861328125
+}
