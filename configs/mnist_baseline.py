@@ -4,8 +4,8 @@ MODEL_CONFIG = {
     "n_heads": 4,
     "n_layers": 4,
     "d_ff": 512,
-    "max_seq_len": 784,
-    "dropout": 0.1,
+    "max_seq_len": 784, #28 * 28
+    "dropout": 0.1, #наверно на 0 поставим
 }
 
 TRAIN_CONFIG = {

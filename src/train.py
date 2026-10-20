@@ -4,8 +4,6 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from src.model import ImageTokenTransformer, ModelConfig
-
 
 def get_tokens(batch):
     if isinstance(batch, torch.Tensor):
