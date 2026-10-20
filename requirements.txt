@@ -1,0 +1,13 @@
+# Python 3.12; validated CPU environment. For CUDA install matching torch wheels first.
+torch==2.9.1
+torchvision==0.24.1
+numpy==2.2.6
+scipy==1.15.3
+PyWavelets==1.8.0
+PyYAML==6.0.2
+Pillow==11.2.1
+matplotlib==3.10.3
+tensorboard==2.19.0
+# TensorBoard 2.19 imports pkg_resources (removed in newer setuptools).
+setuptools==75.8.0
+protobuf==5.29.4

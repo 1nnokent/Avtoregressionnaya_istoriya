@@ -1,0 +1,28 @@
+extends: base.yaml
+experiment:
+  name: smoke
+data:
+  train_limit: 64
+  val_limit: 16
+  test_limit: 16
+tokenizer:
+  max_tokens: 16
+  quantization:
+    num_bins: 16
+model:
+  params:
+    d_model: 16
+    n_layers: 1
+    d_ff: 32
+training:
+  batch_size: 8
+  epochs: 1
+  max_steps: 2
+  log_interval: 1
+  eval_interval: 2
+generation:
+  num_samples: 8
+  batch_size: 8
+metrics:
+  encoders: [pixels]
+  scores: [frechet, precision, recall]

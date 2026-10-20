@@ -1,0 +1,7 @@
+extends: base.yaml
+experiment:
+  name: mnist_dct_zigzag_full
+tokenizer:
+  max_tokens: null
+  quantization:
+    num_bins: 256

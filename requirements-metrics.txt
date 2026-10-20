@@ -1,0 +1,3 @@
+-r requirements.txt
+# Optional CLIP encoder; Inception is already included in torchvision.
+transformers==4.52.4

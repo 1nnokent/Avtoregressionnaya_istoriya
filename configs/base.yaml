@@ -1,0 +1,65 @@
+experiment:
+  name: experiment
+  seed: 42
+  output_dir: runs
+runtime:
+  device: auto
+  num_threads: 4
+  num_workers: 0
+data:
+  ds_name: mnist
+  root: data
+  gray: true
+  size: 28
+  val_fraction: 0.1
+  train_limit: 4096
+  val_limit: 512
+  test_limit: 512
+  download: true
+tokenizer:
+  decomposition: dct
+  decomposition_params: {}
+  ordering: zigzag
+  ordering_params: {}
+  max_tokens: 64
+  normalization:
+    transform: signed_log
+    log_scale: 255.0
+    scaling: minmax
+    per_position: false
+  quantization:
+    method: uniform
+    num_bins: 64
+    per_position: true
+model:
+  class_path: src.model.ImageTokenTransformer
+  config_class: src.model.ModelConfig
+  params:
+    d_model: 64
+    n_heads: 4
+    n_layers: 2
+    d_ff: 128
+    dropout: 0.0
+training:
+  batch_size: 64
+  epochs: 10
+  max_steps: 400
+  learning_rate: 0.001
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_interval: 20
+  eval_interval: 100
+generation:
+  num_samples: 256
+  batch_size: 64
+  temperature: 0.8
+  top_k: null
+metrics:
+  encoders: [mnist]
+  scores: [frechet, classifier_score, precision, recall]
+  batch_size: 64
+  knn_k: 3
+  classifier_epochs: 5
+  clip_prompts: null
+logging:
+  tensorboard: true

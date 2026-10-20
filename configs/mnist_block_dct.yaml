@@ -1,0 +1,9 @@
+extends: base.yaml
+experiment:
+  name: mnist_block_dct
+tokenizer:
+  decomposition: block_dct
+  decomposition_params: {block_size: 7}
+  ordering: block
+  ordering_params: {block_size: 7}
+  max_tokens: null
