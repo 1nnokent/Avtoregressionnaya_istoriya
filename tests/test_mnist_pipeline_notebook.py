@@ -56,3 +56,43 @@ for result in (*decomposition_results.values(), *ordering_results.values()):
         resources={"metadata": {"path": str(NOTEBOOK.parent.parent)}},
     ).execute()
 
+
+def test_notebook_covers_normalization_and_quantization_matrix(monkeypatch):
+    monkeypatch.setenv("MNIST_TRAIN_LIMIT", "200")
+    monkeypatch.setenv("MNIST_VAL_LIMIT", "80")
+    monkeypatch.setenv("MNIST_TEST_LIMIT", "80")
+    notebook = nbformat.read(NOTEBOOK, as_version=4)
+    notebook.cells.append(
+        nbformat.v4.new_code_cell(
+            """
+expected_normalization = {
+    (transform, scaling, per_position)
+    for transform in TRANSFORMS
+    for scaling in SCALINGS
+    for per_position in (False, True)
+}
+assert set(normalization_results) == expected_normalization
+assert selected_normalization["key"] in expected_normalization
+assert selected_normalization["config"]["log_scale"] == 255.0
+
+expected_quantization = {
+    (num_bins, per_position)
+    for num_bins in (16, 32, 64, 128, 256)
+    for per_position in (False, True)
+}
+assert set(quantization_results) == expected_quantization
+assert selected_quantization["key"] in expected_quantization
+for result in (*normalization_results.values(), *quantization_results.values()):
+    assert np.isfinite(result["mse"])
+    assert np.isfinite(result["psnr"])
+"""
+        )
+    )
+
+    NotebookClient(
+        notebook,
+        timeout=600,
+        kernel_name="python3",
+        resources={"metadata": {"path": str(NOTEBOOK.parent.parent)}},
+    ).execute()
+
