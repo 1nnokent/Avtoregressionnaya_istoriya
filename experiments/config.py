@@ -80,6 +80,11 @@ def validate(config):
         raise ValueError(f"Unknown metrics: {sorted(unknown)}")
     if not metrics["encoders"] or set(metrics["encoders"]) - {"inception", "clip"}:
         raise ValueError("metrics.encoders must select inception and/or clip")
+    if metrics.get("train_interval") is not None:
+        if metrics["train_interval"] < 1:
+            raise ValueError("metrics.train_interval must be positive or null")
+        if metrics["train_num_images"] <= metrics["k"]:
+            raise ValueError("metrics.train_num_images must be greater than metrics.k")
     generation = config["generation"]
     if generation["num_images"] < 2 or generation["batch_size"] < 1 or metrics["batch_size"] < 1:
         raise ValueError("Need at least two evaluation images and positive batch sizes")

@@ -42,6 +42,7 @@ class InceptionEncoder:
 
     @torch.no_grad()
     def __call__(self, x):
+        x = x.to(self.device)
         feats = self.net(x)
         probs = F.softmax(self.fc(feats), dim=-1)
         return feats, probs
@@ -61,6 +62,7 @@ class CLIPEncoder:
 
     @torch.no_grad()
     def __call__(self, x):
+        x = x.to(self.device)
         feats = self.model.get_image_features(pixel_values=x)
         feats_n = F.normalize(feats, dim=-1)
         logits = self.model.logit_scale.exp() * feats_n @ self.text_feats.T

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+PRECISIONS = {"fp32": None, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 
 def get_tokens(batch):
@@ -56,6 +57,7 @@ def evaluate(
     val_loader,
     device,
     max_batches=None,
+    amp_dtype=None,
 ):
     was_training = model.training
     model.eval()
@@ -77,10 +79,12 @@ def evaluate(
                 device,
             )
 
-            logits = model(inputs)
+            with torch.autocast(device_type=torch.device(device).type, dtype=amp_dtype,
+                                enabled=amp_dtype is not None):
+                logits = model(inputs)
 
             loss = F.cross_entropy(
-                logits.reshape(-1, model.config.vocab_size),
+                logits.float().reshape(-1, model.config.vocab_size),
                 targets.reshape(-1),
                 reduction="sum",
             )
@@ -157,6 +161,7 @@ def train_model(
     val_loader,
     config,
     device=None,
+    on_step=None,
 ):
     if device is None:
         device = torch.device(
@@ -172,6 +177,10 @@ def train_model(
         lr=config["learning_rate"],
         weight_decay=config["weight_decay"],
     )
+
+    amp_dtype = PRECISIONS[config.get("precision", "fp32")]
+    use_amp = amp_dtype is not None
+    scaler = torch.amp.GradScaler(device.type, enabled=(amp_dtype == torch.float16))
 
     checkpoint_dir = Path(config["checkpoint_dir"])
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -218,21 +227,19 @@ def train_model(
 
             optimizer.zero_grad(set_to_none=True)
 
-            logits = model(inputs)
+            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
+                logits = model(inputs)
+                loss = F.cross_entropy(
+                    logits.reshape(-1, model.config.vocab_size),
+                    targets.reshape(-1),
+                )
 
-            loss = F.cross_entropy(
-                logits.reshape(-1, model.config.vocab_size),
-                targets.reshape(-1),
-            )
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip"])
+            scaler.step(optimizer)
+            scaler.update()
 
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(),
-                config["grad_clip"],
-            )
-
-            optimizer.step()
             step += 1
 
             if step % config["log_interval"] == 0:
@@ -248,6 +255,7 @@ def train_model(
                     val_loader,
                     device,
                     config.get("max_val_batches"),
+                    amp_dtype,
                 )
 
                 print(
@@ -268,6 +276,9 @@ def train_model(
                         epoch,
                         best_val_loss,
                     )
+
+            if on_step is not None:
+                on_step(model, step)
 
             if step % config["checkpoint_interval"] == 0:
                 save_checkpoint(

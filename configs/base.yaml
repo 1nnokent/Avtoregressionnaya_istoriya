@@ -53,6 +53,7 @@ training:
   checkpoint_interval: 500
   log_interval: 20
   grad_clip: 1.0
+  precision: fp32          # fp32 | fp16 | bf16 (fp16/bf16 — на CUDA)
   max_val_batches: null
   # checkpoint_dir and resume_from are set by the launcher per run.
 metrics:
@@ -61,6 +62,8 @@ metrics:
   encoders: [inception]    # inception | clip; download pretrained weights
   batch_size: 100
   k: 3
+  train_interval: 1000     # метрики картинок во время обучения каждые N шагов (на val); null — выключено
+  train_num_images: 100    # сколько картинок генерировать для этих промежуточных метрик
 generation:
   num_images: 200
   batch_size: 50

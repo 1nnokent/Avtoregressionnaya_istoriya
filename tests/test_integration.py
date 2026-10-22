@@ -128,7 +128,7 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
         seen.append(split)
         return images if split == "train" else images[:2]
 
-    def trainer_stub(model, train_loader, val_loader, training, device):
+    def trainer_stub(model, train_loader, val_loader, training, device, on_step=None):
         from pathlib import Path
         assert next(iter(train_loader))[0].shape == (4, 16)
         assert next(iter(val_loader))[0].shape == (2, 16)
@@ -168,7 +168,7 @@ def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
             return batch, torch.softmax(batch, dim=-1)
 
     monkeypatch.setitem(encoders.ENCODERS, "inception", SyntheticEncoder)
-    monkeypatch.setattr(evaluation, "generate_images", lambda *args, **kwargs: images[:, 0].copy())
+    monkeypatch.setattr(evaluation, "generate_images", lambda *args, **kwargs: (images[:, 0].copy(), 0.0))
     summary = evaluation.evaluate_images(None, tokenizer, images, cfg, "cpu")
     assert seen == [(5, 4, 4), (5, 4, 4)]
     assert abs(summary["inception"]["fid"]) < 1e-6

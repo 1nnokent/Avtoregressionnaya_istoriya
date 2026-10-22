@@ -1,6 +1,6 @@
 """Configuration-driven glue for the three independently written components."""
 import argparse
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 import importlib.metadata
 import json
@@ -44,6 +44,46 @@ def make_model(config, tokenizer):
             raise ValueError(f"model.params.{key} must match tokenizer ({value}) or be omitted")
         params[key] = value
     return resolve(config["model"]["target"])(resolve(config["model"]["config_target"])(**params))
+
+
+@contextmanager
+def preserved_rng(device):
+    accelerator = {"cuda": torch.cuda, "mps": torch.mps}.get(torch.device(device).type)
+    cpu_state = torch.get_rng_state()
+    accelerator_state = accelerator.get_rng_state() if accelerator else None
+    try:
+        yield
+    finally:
+        torch.set_rng_state(cpu_state)
+        if accelerator:
+            accelerator.set_rng_state(accelerator_state)
+
+
+TRAIN_SAMPLES_DIR = "samples"
+
+
+def make_metrics_hook(config, tokenizer, device, logger, directory):
+    settings = config["metrics"]
+    interval = settings.get("train_interval")
+    if not settings["enabled"] or not interval:
+        return None
+    from experiments.evaluation import evaluate_images
+    real_images = load_split(config, "val", settings["train_num_images"])
+
+    def hook(model, step):
+        if step % interval:
+            return
+        step_dir = directory / TRAIN_SAMPLES_DIR / f"step_{step}"
+        step_dir.mkdir(parents=True, exist_ok=True)
+        with preserved_rng(device):
+            result = evaluate_images(model, tokenizer, real_images, config, device, output_dir=step_dir)
+        flat = {"clipped_frac": result.pop("clipped_frac")}
+        for encoder, values in result.items():
+            flat.update({f"{encoder}_{key}": value for key, value in values.items()})
+        print(f"step={step} " + " ".join(f"{key}={value:.4f}" for key, value in flat.items()))
+        logger.record("image_metrics", step=step, **flat)
+
+    return hook
 
 
 def run(config, mode, checkpoint=None):
@@ -90,7 +130,9 @@ def run(config, mode, checkpoint=None):
             val_loader = token_loader(val_images, tokenizer, config)
             if mode == "train":
                 training = {**config["training"], "checkpoint_dir": str(directory), "resume_from": str(checkpoint) if checkpoint else None}
-                model = train_model(model, token_loader(train_images, tokenizer, config, shuffle=True), val_loader, training, device)
+                on_step = make_metrics_hook(config, tokenizer, device, logger, directory)
+                model = train_model(model, token_loader(train_images, tokenizer, config, shuffle=True), val_loader, training, device,
+                                    on_step=on_step)
                 checkpoint = directory / "latest.pt"
             else:
                 load_checkpoint(checkpoint, model, device=device)
@@ -100,7 +142,7 @@ def run(config, mode, checkpoint=None):
                 real_images = load_split(config, config["data"].get("evaluation_split", "test"), config["generation"]["num_images"])
                 if len(real_images) < config["generation"]["num_images"]:
                     raise ValueError("Evaluation split is smaller than generation.num_images")
-                summary["images"] = evaluate_images(model, tokenizer, real_images, config, device)
+                summary["images"] = evaluate_images(model, tokenizer, real_images, config, device, output_dir=directory)
             (directory / "summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False), encoding="utf-8")
             logger.record("completed", checkpoint=str(checkpoint), **summary)
             print(json.dumps(summary, indent=2))
