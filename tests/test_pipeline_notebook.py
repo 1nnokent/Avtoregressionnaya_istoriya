@@ -5,7 +5,7 @@ import nbformat
 from nbclient import NotebookClient
 
 
-NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks" / "mnist_pipeline_demo.ipynb"
+NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks" / "pipeline_demo.ipynb"
 REQUIRED_SECTIONS = (
     "## 1. Подготовка",
     "## 2. Разложения",
@@ -31,9 +31,9 @@ def test_notebook_has_required_sections_and_compilable_code():
 
 
 def test_notebook_covers_all_decompositions_and_orderings(monkeypatch):
-    monkeypatch.setenv("MNIST_TRAIN_LIMIT", "200")
-    monkeypatch.setenv("MNIST_VAL_LIMIT", "80")
-    monkeypatch.setenv("MNIST_TEST_LIMIT", "80")
+    monkeypatch.setenv("TRAIN_LIMIT", "200")
+    monkeypatch.setenv("VAL_LIMIT", "80")
+    monkeypatch.setenv("TEST_LIMIT", "80")
     notebook = nbformat.read(NOTEBOOK, as_version=4)
     notebook.cells.append(
         nbformat.v4.new_code_cell(
@@ -65,9 +65,9 @@ for result in (*decomposition_results.values(), *ordering_results.values()):
 
 
 def test_notebook_covers_normalization_and_quantization_matrix(monkeypatch):
-    monkeypatch.setenv("MNIST_TRAIN_LIMIT", "200")
-    monkeypatch.setenv("MNIST_VAL_LIMIT", "80")
-    monkeypatch.setenv("MNIST_TEST_LIMIT", "80")
+    monkeypatch.setenv("TRAIN_LIMIT", "200")
+    monkeypatch.setenv("VAL_LIMIT", "80")
+    monkeypatch.setenv("TEST_LIMIT", "80")
     notebook = nbformat.read(NOTEBOOK, as_version=4)
     notebook.cells.append(
         nbformat.v4.new_code_cell(
@@ -111,9 +111,9 @@ for result in (*normalization_results.values(), *quantization_results.values()):
 
 
 def test_notebook_final_tokenizer_contract(monkeypatch):
-    monkeypatch.setenv("MNIST_TRAIN_LIMIT", "200")
-    monkeypatch.setenv("MNIST_VAL_LIMIT", "80")
-    monkeypatch.setenv("MNIST_TEST_LIMIT", "80")
+    monkeypatch.setenv("TRAIN_LIMIT", "200")
+    monkeypatch.setenv("VAL_LIMIT", "80")
+    monkeypatch.setenv("TEST_LIMIT", "80")
     notebook = nbformat.read(NOTEBOOK, as_version=4)
     notebook.cells.append(
         nbformat.v4.new_code_cell(
@@ -156,7 +156,7 @@ np.testing.assert_allclose(final_tokenizer.quantizer.thresholds, train_fitted_re
         for part in item.text
     )
     token_line = next(
-        (line for line in output.splitlines() if line.startswith("Первые 32 токена первой test-цифры:")),
+        (line for line in output.splitlines() if line.startswith("Первые 32 токена первой test-картинки:")),
         None,
     )
     assert token_line is not None
