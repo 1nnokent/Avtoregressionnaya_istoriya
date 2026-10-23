@@ -1,6 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache, partial
-from collections.abc import Callable
 
 import numpy as np
 import pywt
@@ -30,7 +30,9 @@ def get_decomposition(name: str, **params) -> Decomposition:
         "wavelet": (wavelet_forward, wavelet_inverse),
     }
     if name not in transforms:
-        raise ValueError(f"unknown decomposition {name!r}, expected one of {DECOMPOSITIONS}")
+        raise ValueError(
+            f"unknown decomposition {name!r}, expected one of {DECOMPOSITIONS}"
+        )
     forward, inverse = transforms[name]
     return Decomposition(name, partial(forward, **params), partial(inverse, **params))
 
@@ -54,11 +56,14 @@ def block_dct_inverse(coeffs: np.ndarray, block_size: int = 8) -> np.ndarray:
 
 
 def _split_blocks(x: np.ndarray, block_size: int) -> np.ndarray:
-    """(..., H, W) -> (..., H/b, b, W/b, b)"""
     height, width = x.shape[-2:]
     if height % block_size or width % block_size:
-        raise ValueError(f"image {height}x{width} can not be cut into {block_size}x{block_size} blocks")
-    return x.reshape(*x.shape[:-2], height // block_size, block_size, width // block_size, block_size)
+        raise ValueError(
+            f"image {height}x{width} can not be cut into {block_size}x{block_size} blocks"
+        )
+    return x.reshape(
+        *x.shape[:-2], height // block_size, block_size, width // block_size, block_size
+    )
 
 
 def _merge_blocks(blocks: np.ndarray) -> np.ndarray:
@@ -76,12 +81,18 @@ def interleaved_frequencies(n: int) -> np.ndarray:
 def dft_forward(x: np.ndarray) -> np.ndarray:
     spectrum = np.fft.fft2(x, norm="ortho")
     hartley = (np.real(spectrum) - np.imag(spectrum)).astype(x.dtype)
-    rows, cols = interleaved_frequencies(x.shape[-2]), interleaved_frequencies(x.shape[-1])
+    rows, cols = (
+        interleaved_frequencies(x.shape[-2]),
+        interleaved_frequencies(x.shape[-1]),
+    )
     return hartley[..., rows[:, None], cols[None, :]]
 
 
 def dft_inverse(coeffs: np.ndarray) -> np.ndarray:
-    rows, cols = interleaved_frequencies(coeffs.shape[-2]), interleaved_frequencies(coeffs.shape[-1])
+    rows, cols = (
+        interleaved_frequencies(coeffs.shape[-2]),
+        interleaved_frequencies(coeffs.shape[-1]),
+    )
     hartley = np.empty_like(coeffs)
     hartley[..., rows[:, None], cols[None, :]] = coeffs
     spectrum = np.fft.fft2(hartley, norm="ortho")
@@ -95,22 +106,32 @@ def max_wavelet_level(height: int, width: int) -> int:
     return level
 
 
-def wavelet_forward(x: np.ndarray, wavelet: str = "haar", level: int | None = None) -> np.ndarray:
+def wavelet_forward(
+    x: np.ndarray, wavelet: str = "haar", level: int | None = None
+) -> np.ndarray:
     level = level if level is not None else max_wavelet_level(*x.shape[-2:])
     coeffs = pywt.wavedec2(x, wavelet, mode="periodization", level=level, axes=(-2, -1))
     array, _ = pywt.coeffs_to_array(coeffs, axes=(-2, -1))
     return array
 
 
-def wavelet_inverse(coeffs: np.ndarray, wavelet: str = "haar", level: int | None = None) -> np.ndarray:
+def wavelet_inverse(
+    coeffs: np.ndarray, wavelet: str = "haar", level: int | None = None
+) -> np.ndarray:
     level = level if level is not None else max_wavelet_level(*coeffs.shape[-2:])
     slices = _wavelet_slices(*coeffs.shape[-2:], wavelet, level)
     parts = pywt.array_to_coeffs(coeffs, slices, output_format="wavedec2")
-    return pywt.waverec2(parts, wavelet, mode="periodization", axes=(-2, -1)).astype(coeffs.dtype)
+    return pywt.waverec2(parts, wavelet, mode="periodization", axes=(-2, -1)).astype(
+        coeffs.dtype
+    )
 
 
 @lru_cache
 def _wavelet_slices(height: int, width: int, wavelet: str, level: int) -> list:
-    coeffs = pywt.wavedec2(np.zeros((height, width)), wavelet, mode="periodization", level=level)
+    coeffs = pywt.wavedec2(
+        np.zeros((height, width)), wavelet, mode="periodization", level=level
+    )
     _, slices = pywt.coeffs_to_array(coeffs)
-    return [(..., *slices[0])] + [{key: (..., *value) for key, value in part.items()} for part in slices[1:]]
+    return [(..., *slices[0])] + [
+        {key: (..., *value) for key, value in part.items()} for part in slices[1:]
+    ]

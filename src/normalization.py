@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -28,9 +27,13 @@ class Normalizer:
 
     def __post_init__(self):
         if self.transform not in TRANSFORMS:
-            raise ValueError(f"unknown transform {self.transform!r}, expected one of {TRANSFORMS}")
+            raise ValueError(
+                f"unknown transform {self.transform!r}, expected one of {TRANSFORMS}"
+            )
         if self.scaling not in SCALINGS:
-            raise ValueError(f"unknown scaling {self.scaling!r}, expected one of {SCALINGS}")
+            raise ValueError(
+                f"unknown scaling {self.scaling!r}, expected one of {SCALINGS}"
+            )
 
     def apply_transform(self, x: np.ndarray) -> np.ndarray:
         if self.transform == "signed_log":
