@@ -40,10 +40,7 @@ def test_notebook_covers_all_decompositions_and_orderings(monkeypatch):
             """
 assert tuple(FRACTIONS) == (0.05, 0.10, 0.25, 0.50)
 assert set(decomposition_results) == set(DECOMPOSITIONS)
-assert SELECTED_DECOMPOSITION == min(
-    DECOMPOSITIONS,
-    key=lambda name: decomposition_results[name]["mse_by_fraction"][0.25],
-)
+assert SELECTED_DECOMPOSITION == min(prefix_mse, key=prefix_mse.get)[0]
 assert set(ordering_results) == set(ORDERINGS)
 assert selected_ordering == min(
     ORDERINGS,
@@ -120,9 +117,9 @@ def test_notebook_final_tokenizer_contract(monkeypatch):
             """
 assert psnr(test_images, test_images) == float("inf")
 assert np.issubdtype(test_tokens.dtype, np.integer)
-assert test_tokens.shape == (len(test_images), 28 * 28)
+assert test_tokens.shape == (len(test_images), test_images[0].size)
 assert 0 <= test_tokens.min() <= test_tokens.max() < final_tokenizer.vocab_size
-assert test_reconstruction.shape == (len(test_images), 1, 28, 28)
+assert test_reconstruction.shape == test_images.shape
 assert np.isfinite(test_reconstruction).all()
 assert np.isfinite(final_metrics["mse"])
 assert np.isfinite(final_metrics["psnr"])
