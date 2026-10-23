@@ -4,3 +4,7 @@ experiment:
 data:
   params:
     ds_name: cifar10
+    gray: false
+  batch_size: 16
+metrics:
+  clip_prompts: [airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck]

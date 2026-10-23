@@ -73,8 +73,7 @@ def validate(config):
     if train.get("max_val_batches") is not None and train["max_val_batches"] < 1:
         raise ValueError("training.max_val_batches must be positive or null")
     metrics = config["metrics"]
-    if metrics["enabled"] and config["data"]["params"].get("gray") is False:
-        raise ValueError("Original metrics require data.params.gray: true")
+
     unknown = set(metrics["names"]) - {"fid", "is", "precision", "recall"}
     if unknown:
         raise ValueError(f"Unknown metrics: {sorted(unknown)}")

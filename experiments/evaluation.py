@@ -7,12 +7,11 @@ from metrics.src.metrics import scores
 GRID_SIDE = 8
 GRID_CELL_INCHES = 1.0
 GRID_DPI = 120
-GRAY_CHANNEL = 0
 NCHW_NDIM = 4
-GRAY_CHANNELS = 1
 GENERATED_FILE = "generated.npz"
 SAMPLES_GRID_FILE = "samples.png"
 REAL_GRID_FILE = "real.png"
+CLIP_PROMPT_TEMPLATE = "a photo of a {}"
 
 
 def save_grid(images, path, side=GRID_SIDE):
@@ -21,8 +20,11 @@ def save_grid(images, path, side=GRID_SIDE):
     import matplotlib.pyplot as plt
     size = side * GRID_CELL_INCHES
     fig, axes = plt.subplots(side, side, figsize=(size, size))
-    for ax, image in zip(axes.flat, images):
-        ax.imshow(image, cmap="gray", vmin=PIXEL_MIN, vmax=PIXEL_MAX)
+    for ax, image in zip(axes.flat, images):  # image: (C, H, W)
+        if image.shape[0] == 1:
+            ax.imshow(image[0], cmap="gray", vmin=PIXEL_MIN, vmax=PIXEL_MAX)
+        else:
+            ax.imshow(image.transpose(1, 2, 0).clip(PIXEL_MIN, PIXEL_MAX))
     for ax in axes.flat:
         ax.axis("off")
     fig.tight_layout()
@@ -31,14 +33,13 @@ def save_grid(images, path, side=GRID_SIDE):
 
 
 def evaluate_images(model, tokenizer, real_images, config, device, output_dir=None):
-    if real_images.ndim != NCHW_NDIM or real_images.shape[1] != GRAY_CHANNELS:
-        raise ValueError("Original metrics support grayscale images; set data.params.gray: true")
+    if real_images.ndim != NCHW_NDIM:
+        raise ValueError("Expected images (N, C, H, W)")
     from metrics.src.metrics.encoders import ENCODERS
 
-    real_gray = real_images[:, GRAY_CHANNEL]
     generation = config["generation"]
     fake_images, clipped_frac = generate_images(
-        model, lambda tokens: tokenizer.decode(tokens)[0, GRAY_CHANNEL],
+        model, lambda tokens: tokenizer.decode(tokens)[0],
         len(real_images), generation["temperature"], device,
         batch_size=generation["batch_size"], top_k=generation.get("top_k"),
         seed=config["experiment"]["seed"],
@@ -46,14 +47,18 @@ def evaluate_images(model, tokenizer, real_images, config, device, output_dir=No
     if output_dir is not None:
         np.savez_compressed(output_dir / GENERATED_FILE, images=fake_images)
         save_grid(fake_images, output_dir / SAMPLES_GRID_FILE)
-        save_grid(real_gray, output_dir / REAL_GRID_FILE)
+        save_grid(real_images, output_dir / REAL_GRID_FILE)
 
     settings = config["metrics"]
     names = set(settings["names"])
     result = {"clipped_frac": clipped_frac}
     for name in settings["encoders"]:
-        encoder = ENCODERS[name](device)
-        real_feats, real_probs = scores.get_features(real_gray, encoder, settings["batch_size"])
+        prompts = settings.get("clip_prompts")
+        if name == "clip" and prompts:
+            encoder = ENCODERS[name](device, class_prompts=[CLIP_PROMPT_TEMPLATE.format(c) for c in prompts])
+        else:
+            encoder = ENCODERS[name](device)
+        real_feats, real_probs = scores.get_features(real_images, encoder, settings["batch_size"])
         fake_feats, fake_probs = scores.get_features(fake_images, encoder, settings["batch_size"])
         del encoder
 

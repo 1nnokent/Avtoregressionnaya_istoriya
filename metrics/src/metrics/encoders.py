@@ -18,16 +18,21 @@ CLIP_MODEL_NAME = 'openai/clip-vit-base-patch32'
 NUM_DIGITS = 10
 DIGIT_PROMPTS = [f'a handwritten digit {d}' for d in range(NUM_DIGITS)]
 
+RGB_CHANNELS = 3
+GRAY_NDIM = 3
+
 
 def preprocess(images, size, mean, std):
-  x = torch.tensor(np.asarray(images), dtype=torch.float32)
-  x = x.unsqueeze(1)
-  x = x.repeat(1, 3, 1, 1)
-  x = F.interpolate(x, size = size, mode = 'bilinear', align_corners=False)
-  mean_n = torch.tensor(mean).view(1, 3, 1, 1)
-  std_n = torch.tensor(std).view(1, 3, 1, 1)
-  x = (x - mean_n) / std_n
-  return x
+    x = torch.tensor(np.asarray(images), dtype=torch.float32)
+    if x.ndim == GRAY_NDIM:
+        x = x.unsqueeze(1)
+    x = F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+    if x.shape[1] != RGB_CHANNELS:
+        x = x.expand(-1, RGB_CHANNELS, -1, -1)
+    mean_n = torch.tensor(mean).view(1, 3, 1, 1)
+    std_n = torch.tensor(std).view(1, 3, 1, 1)
+    x = (x - mean_n) / std_n
+    return x
 
 class InceptionEncoder:
     def __init__(self, device):

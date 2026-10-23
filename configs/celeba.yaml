@@ -1,0 +1,13 @@
+extends: base.yaml
+experiment:
+  name: celeba_dct
+data:
+  params:
+    ds_name: celeba
+    gray: false
+    size: 32
+  train_limit: 50000
+  batch_size: 16
+metrics:
+  names: [fid, precision, recall]
+  encoders: [inception]

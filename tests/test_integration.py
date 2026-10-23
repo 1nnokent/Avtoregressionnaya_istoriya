@@ -161,7 +161,7 @@ def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
 
         def preprocess(self, batch):
             seen.append(batch.shape)
-            assert batch.ndim == 3
+            assert batch.ndim == 4
             return torch.tensor(batch.reshape(len(batch), -1)[:, :3])
 
         def __call__(self, batch):
