@@ -14,6 +14,8 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DATASETS = ("mnist", "cifar10", "celeba", "imagenet")
 SPLITS = ("train", "val", "test")
 CIFAR10_HF_URL = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/{split}-00000-of-00001.parquet"
+CELEBA_HF_URL = "https://huggingface.co/datasets/flwrlabs/celeba/resolve/main/img_align%2Bidentity%2Battr/{shard}.parquet"
+CELEBA_HF_SHARDS = {"train": "train-00000-of-00019", "val": "valid-00000-of-00003", "test": "test-00000-of-00003"}
 LUMA = np.array([0.299, 0.587, 0.114], dtype=np.float32)
 
 
@@ -43,7 +45,7 @@ def load_images(
         raise ValueError(f"unknown split {split!r}, expected one of {SPLITS}")
 
     dataset = _torchvision_dataset(ds_name, split, Path(root), size)
-    indices = np.arange(len(dataset))
+    indices = np.random.default_rng(seed).permutation(len(dataset))
 
     if split != "test" and ds_name != "celeba":
         train_idx, val_idx = train_val_indices(len(dataset), val_fraction, seed)
@@ -51,7 +53,7 @@ def load_images(
     if limit is not None:
         indices = indices[:limit]
 
-    images = _to_array(ds_name, dataset, indices).astype(np.float32) / 255.0
+    images = _to_array(ds_name, dataset, indices, size).astype(np.float32) / 255.0
     if gray and images.shape[1] == 3:
         images = np.einsum("c,nchw->nhw", LUMA, images)[:, None]
     return images
@@ -64,14 +66,7 @@ def _torchvision_dataset(ds_name: str, split: str, root: Path, size: int):
         return _load_cifar10("test" if split == "test" else "train", root)
 
     if ds_name == "celeba":
-        if not (root / "celeba" / "img_align_celeba").exists():
-            raise FileNotFoundError(
-                f"put CelebA files into {root / 'celeba'}: img_align_celeba/ (unzipped), list_eval_partition.txt, "
-                "list_attr_celeba.txt, identity_CelebA.txt, list_bbox_celeba.txt, list_landmarks_align_celeba.txt"
-            )
-        transform = T.Compose([T.CenterCrop(178), T.Resize(size), T.PILToTensor()])
-        celeba_split = {"train": "train", "val": "valid", "test": "test"}[split]
-        return datasets.CelebA(root, split=celeba_split, target_type="identity", transform=transform)
+        return _load_celeba(split, root)
 
     folder = root / "imagenet" / ("val" if split == "test" else "train")
     if not folder.exists():
@@ -81,21 +76,34 @@ def _torchvision_dataset(ds_name: str, split: str, root: Path, size: int):
     return datasets.ImageFolder(folder, transform=transform)
 
 
-def _to_array(ds_name: str, dataset, indices: np.ndarray) -> np.ndarray:
+def _to_array(ds_name: str, dataset, indices: np.ndarray, size: int) -> np.ndarray:
     if ds_name == "mnist":
         return dataset.data.numpy()[indices, None]
     if ds_name == "cifar10":
         return dataset[indices]
+    if ds_name == "celeba":
+        transform = T.Compose([T.CenterCrop(178), T.Resize(size), T.PILToTensor()])
+        return torch.stack([transform(Image.open(io.BytesIO(dataset[i])).convert("RGB")) for i in indices]).numpy()
     loader = DataLoader(Subset(dataset, indices.tolist()), batch_size=256)
     return torch.cat([images for images, _ in loader]).numpy()
 
 
-def _load_cifar10(split: str, root: Path) -> np.ndarray:
-    path = root / "cifar10" / f"{split}.parquet"
+def _download(url: str, path: Path) -> Path:
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         partial = path.with_suffix(".part")
-        urllib.request.urlretrieve(CIFAR10_HF_URL.format(split=split), partial)
+        urllib.request.urlretrieve(url, partial)
         partial.rename(path)
+    return path
+
+
+def _load_celeba(split: str, root: Path) -> list[bytes]:
+    url = CELEBA_HF_URL.format(shard=CELEBA_HF_SHARDS[split])
+    path = _download(url, root / "celeba" / f"{split}.parquet")
+    return [image["bytes"] for image in pq.read_table(path, columns=["image"]).column("image").to_pylist()]
+
+
+def _load_cifar10(split: str, root: Path) -> np.ndarray:
+    path = _download(CIFAR10_HF_URL.format(split=split), root / "cifar10" / f"{split}.parquet")
     pngs = pq.read_table(path, columns=["img"]).column("img").to_pylist()
     return np.stack([np.asarray(Image.open(io.BytesIO(png["bytes"]))) for png in pngs]).transpose(0, 3, 1, 2)
