@@ -6,9 +6,11 @@ __pycache__/
 .idea/
 .vscode/
 .ipynb_checkpoints/
+.superpowers/
 .mypy_cache/
 /data/
 /datasets/data/
 /runs/
 /checkpoints/
 *.egg-info/
+.claude

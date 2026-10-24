@@ -10,6 +10,10 @@ has_cifar10 = pytest.mark.skipif(
     not (DATA_DIR / "cifar10" / "test.parquet").exists(),
     reason="CIFAR-10 is not downloaded",
 )
+has_celeba = pytest.mark.skipif(
+    not (DATA_DIR / "celeba" / "test.parquet").exists(),
+    reason="CelebA is not downloaded",
+)
 
 
 def test_train_val_split_is_disjoint():
@@ -36,3 +40,13 @@ def test_load_cifar10():
     assert images.shape == (100, 3, 32, 32) and images.dtype == np.float32
     assert 0 <= images.min() and images.max() <= 1
     assert load_images("cifar10", "test", limit=100).shape == (100, 1, 32, 32)
+    assert not np.array_equal(images, load_images("cifar10", "test", gray=False, limit=100, seed=1))
+
+
+@has_celeba
+def test_load_celeba():
+    images = load_images("celeba", "test", gray=False, limit=20)
+    assert images.shape == (20, 3, 64, 64) and images.dtype == np.float32
+    assert 0 <= images.min() and images.max() <= 1
+    assert load_images("celeba", "test", limit=20).shape == (20, 1, 64, 64)
+    assert not np.array_equal(images, load_images("celeba", "test", gray=False, limit=20, seed=1))
