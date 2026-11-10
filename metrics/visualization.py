@@ -1,4 +1,4 @@
-from metrics.src.generation import PIXEL_MAX, PIXEL_MIN
+from metrics.generation import PIXEL_MAX, PIXEL_MIN
 
 GRID_SIDE = 8
 GRID_CELL_INCHES = 1.0

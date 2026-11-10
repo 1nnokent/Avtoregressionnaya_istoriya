@@ -67,7 +67,7 @@ def make_metrics_hook(config, tokenizer, device, logger, directory):
     interval = settings.get("train_interval")
     if not settings["enabled"] or not interval:
         return None
-    from metrics.src.evaluation import evaluate_images
+    from metrics.evaluation import evaluate_images
     real_images = load_split(config, "val", settings["train_num_images"])
 
     def hook(model, step):
@@ -138,7 +138,7 @@ def run(config, mode, checkpoint=None):
                 load_checkpoint(checkpoint, model, device=device)
             summary = evaluate(model, val_loader, device, config["training"].get("max_val_batches"))
             if config["metrics"]["enabled"]:
-                from metrics.src.evaluation import evaluate_images
+                from metrics.evaluation import evaluate_images
                 real_images = load_split(config, config["data"].get("evaluation_split", "test"), config["generation"]["num_images"])
                 if len(real_images) < config["generation"]["num_images"]:
                     raise ValueError("Evaluation split is smaller than generation.num_images")

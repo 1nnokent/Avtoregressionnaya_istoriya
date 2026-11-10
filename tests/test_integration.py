@@ -146,8 +146,8 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
 
 
 def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
-    from metrics.src import evaluation
-    from metrics.src import encoders
+    from metrics import evaluation
+    from metrics import encoders
 
     images = np.random.default_rng(4).random((5, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer().fit(images)

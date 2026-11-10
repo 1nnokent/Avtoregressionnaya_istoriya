@@ -1,9 +1,9 @@
 import numpy as np
 
-from metrics.src.generation import generate_images
-from metrics.src import scores
-from metrics.src.visualization import save_grid
-from metrics.src.encoders import ENCODERS
+from metrics.generation import generate_images
+from metrics import scores
+from metrics.visualization import save_grid
+from metrics.encoders import ENCODERS
 
 NCHW_NDIM = 4
 GENERATED_FILE = "generated.npz"
