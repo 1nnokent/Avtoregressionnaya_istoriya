@@ -1,12 +1,13 @@
 from dataclasses import dataclass, field
 
 import numpy as np
+import json
 
 from .decomposition import get_decomposition
 from .normalization import Normalizer
 from .ordering import forward_ordering, invert_ordering, ordering_indices
 from .quantization import Quantizer
-
+from dataclasses import asdict
 
 @dataclass
 class TokenizerConfig:
@@ -72,6 +73,28 @@ class Tokenizer:
         self._check_fitted()
         tokens = np.asarray(tokens).reshape(-1, self.sequence_length)
         return self.sequence_to_images(self.normalizer.inverse(self.quantizer.decode(tokens)))
+
+    def save(self, path):
+        np.savez_compressed(
+            path,
+            config=json.dumps(asdict(self.config)),
+            image_shape=self.image_shape,
+            offset=self.normalizer.offset,
+            spread=self.normalizer.spread,
+            thresholds=self.quantizer.thresholds,
+            centers=self.quantizer.centers,
+        )
+
+    @classmethod
+    def load(cls, path):
+        with np.load(path, allow_pickle=False) as state:
+            tokenizer = cls(json.loads(str(state["config"])))
+            tokenizer.image_shape = tuple(int(i) for i in state["image_shape"])
+            tokenizer.normalizer.offset = state["offset"]
+            tokenizer.normalizer.spread = state["spread"]
+            tokenizer.quantizer.thresholds = state["thresholds"]
+            tokenizer.quantizer.centers = state["centers"]
+        return tokenizer
 
     def _indices(self, height: int, width: int) -> np.ndarray:
         return ordering_indices(self.config.ordering, height, width, **self.config.ordering_params)

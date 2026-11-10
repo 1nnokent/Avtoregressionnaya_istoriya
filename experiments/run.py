@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 import yaml
 
-from experiments.artifacts import RunLog, load_tokenizer, save_tokenizer
+from experiments.logger import RunLog
 from experiments.config import ROOT, load_config, project_path, resolve, validate
 from model.src.train import evaluate, load_checkpoint, train_model
 
@@ -67,7 +67,7 @@ def make_metrics_hook(config, tokenizer, device, logger, directory):
     interval = settings.get("train_interval")
     if not settings["enabled"] or not interval:
         return None
-    from experiments.evaluation import evaluate_images
+    from metrics.src.evaluation import evaluate_images
     real_images = load_split(config, "val", settings["train_num_images"])
 
     def hook(model, step):
@@ -121,10 +121,10 @@ def run(config, mode, checkpoint=None):
                 train_images = load_split(config, "train", config["data"].get("train_limit"))
                 tokenizer = resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {})).fit(train_images)
             else:
-                tokenizer = load_tokenizer(checkpoint.parent / "tokenizer.npz", config["tokenizer"]["target"])
+                tokenizer = resolve(config["tokenizer"]["target"]).load(checkpoint.parent / "tokenizer.npz")
                 if mode == "train":
                     train_images = load_split(config, "train", config["data"].get("train_limit"))
-            save_tokenizer(directory / "tokenizer.npz", tokenizer)
+            tokenizer.save(directory / "tokenizer.npz")
             model = make_model(config, tokenizer).to(device)
             val_images = load_split(config, "val", config["data"].get("val_limit"))
             val_loader = token_loader(val_images, tokenizer, config)
@@ -138,7 +138,7 @@ def run(config, mode, checkpoint=None):
                 load_checkpoint(checkpoint, model, device=device)
             summary = evaluate(model, val_loader, device, config["training"].get("max_val_batches"))
             if config["metrics"]["enabled"]:
-                from experiments.evaluation import evaluate_images
+                from metrics.src.evaluation import evaluate_images
                 real_images = load_split(config, config["data"].get("evaluation_split", "test"), config["generation"]["num_images"])
                 if len(real_images) < config["generation"]["num_images"]:
                     raise ValueError("Evaluation split is smaller than generation.num_images")

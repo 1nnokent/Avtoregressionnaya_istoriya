@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from datasets.src.tokenizer import Tokenizer
-from experiments.artifacts import RunLog, load_tokenizer, save_tokenizer
+from experiments.logger import RunLog
 from experiments.config import ROOT, load_config, validate
 from experiments import run as runner
 from model.src.train import prepare_batch
@@ -36,8 +36,8 @@ def test_circular_inheritance_is_rejected(tmp_path):
 def test_saved_tokenizer_preserves_training_state(tmp_path, per_position):
     images = np.random.default_rng(1).random((8, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer({"normalization": {"per_position": per_position}, "quantization": {"per_position": per_position}}).fit(images)
-    save_tokenizer(tmp_path / "tokenizer.npz", tokenizer)
-    restored = load_tokenizer(tmp_path / "tokenizer.npz", "datasets.src.tokenizer:Tokenizer")
+    tokenizer.save(tmp_path / "tokenizer.npz")
+    restored = Tokenizer.load(tmp_path / "tokenizer.npz")
     np.testing.assert_array_equal(tokenizer.encode(images), restored.encode(images))
     np.testing.assert_array_equal(tokenizer.decode(tokenizer.encode(images)), restored.decode(restored.encode(images)))
 
@@ -81,7 +81,7 @@ def test_evaluate_uses_saved_tokenizer_and_never_trains(tmp_path, monkeypatch):
     model = runner.make_model(cfg, tokenizer)
     checkpoint = tmp_path / "latest.pt"
     torch.save({"model": model.state_dict(), "model_config": vars(model.config)}, checkpoint)
-    save_tokenizer(tmp_path / "tokenizer.npz", tokenizer)
+    tokenizer.save(tmp_path / "tokenizer.npz")
     splits = []
 
     def synthetic_split(config, split, limit):
@@ -146,8 +146,8 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
 
 
 def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
-    from experiments import evaluation
-    from metrics.src.metrics import encoders
+    from metrics.src import evaluation
+    from metrics.src import encoders
 
     images = np.random.default_rng(4).random((5, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer().fit(images)

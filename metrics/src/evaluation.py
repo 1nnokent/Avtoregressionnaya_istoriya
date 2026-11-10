@@ -1,41 +1,19 @@
-"""Adapt the datasets' NCHW images to the unchanged grayscale metrics API."""
 import numpy as np
 
-from metrics.src.generation import PIXEL_MAX, PIXEL_MIN, generate_images
-from metrics.src.metrics import scores
+from metrics.src.generation import generate_images
+from metrics.src import scores
+from metrics.src.visualization import save_grid
+from metrics.src.encoders import ENCODERS
 
-GRID_SIDE = 8
-GRID_CELL_INCHES = 1.0
-GRID_DPI = 120
 NCHW_NDIM = 4
 GENERATED_FILE = "generated.npz"
 SAMPLES_GRID_FILE = "samples.png"
 REAL_GRID_FILE = "real.png"
 CLIP_PROMPT_TEMPLATE = "a photo of a {}"
 
-
-def save_grid(images, path, side=GRID_SIDE):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    size = side * GRID_CELL_INCHES
-    fig, axes = plt.subplots(side, side, figsize=(size, size))
-    for ax, image in zip(axes.flat, images):  # image: (C, H, W)
-        if image.shape[0] == 1:
-            ax.imshow(image[0], cmap="gray", vmin=PIXEL_MIN, vmax=PIXEL_MAX)
-        else:
-            ax.imshow(image.transpose(1, 2, 0).clip(PIXEL_MIN, PIXEL_MAX))
-    for ax in axes.flat:
-        ax.axis("off")
-    fig.tight_layout()
-    fig.savefig(path, dpi=GRID_DPI)
-    plt.close(fig)
-
-
 def evaluate_images(model, tokenizer, real_images, config, device, output_dir=None):
     if real_images.ndim != NCHW_NDIM:
         raise ValueError("Expected images (N, C, H, W)")
-    from metrics.src.metrics.encoders import ENCODERS
 
     generation = config["generation"]
     fake_images, clipped_frac = generate_images(
