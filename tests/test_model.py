@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from model.src.model import ImageTokenTransformer, ModelConfig
 
 
-def main():
+def test_forward_backward_and_generation():
     config = ModelConfig(
         vocab_size=256,
         d_model=128,
@@ -55,11 +55,3 @@ def main():
     assert generated.min() >= 0
     assert generated.max() < config.vocab_size
 
-    print("Forward pass:", logits.shape)
-    print("Loss:", loss.item())
-    print("Generation:", generated.shape)
-    print("All checks passed")
-
-
-if __name__ == "__main__":
-    main()
