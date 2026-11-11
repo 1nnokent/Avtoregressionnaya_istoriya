@@ -8,7 +8,7 @@ METHODS = ("uniform",)
 class Quantizer:
     method: str = "uniform"
     num_bins: int = 256
-    per_position: bool = False
+    per_position: bool = True
     thresholds: np.ndarray | None = field(default=None, repr=False)
     centers: np.ndarray | None = field(default=None, repr=False)
 

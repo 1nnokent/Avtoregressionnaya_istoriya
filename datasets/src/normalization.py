@@ -21,7 +21,7 @@ class Normalizer:
     transform: str = "signed_log"
     log_scale: float = 1.0
     scaling: str = "minmax"
-    per_position: bool = False
+    per_position: bool = True
     offset: np.ndarray | None = field(default=None, repr=False)
     spread: np.ndarray | None = field(default=None, repr=False)
 
