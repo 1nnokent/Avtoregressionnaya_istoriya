@@ -105,13 +105,15 @@ def main():
 
     for encoder_name in args.encoders:
         encoder = ENCODERS[encoder_name](args.device)
-        real_feats, _ = scores.get_features(real_eval, encoder, args.batch_size)
+        real_feats, real_probs = scores.get_features(real_eval, encoder, args.batch_size)
+        results.setdefault('real', {})[encoder_name] = {'is': scores.compute_is(real_probs)}
         for name, (images, _) in candidates.items():
             fake_eval = to_nchw_float(downsample_uint8(images, args.size))
-            fake_feats, _ = scores.get_features(fake_eval, encoder, args.batch_size)
+            fake_feats, fake_probs = scores.get_features(fake_eval, encoder, args.batch_size)
             precision, recall = scores.compute_precision_recall(real_feats, fake_feats, args.k)
             results[name][encoder_name] = {
                 'fid': scores.compute_fid(real_feats, fake_feats),
+                'is': scores.compute_is(fake_probs),
                 'precision': precision,
                 'recall': recall,
             }

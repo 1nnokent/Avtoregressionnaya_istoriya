@@ -26,7 +26,7 @@ training:
   eval_interval: 500
   max_val_batches: 20
 metrics:
-  names: [fid, precision, recall]
+  names: [ fid, is, precision, recall ]
   encoders: [inception]
   train_interval: null       # промежуточные метрики дорогие; считаем в конце
 generation:
