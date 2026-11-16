@@ -168,9 +168,9 @@ def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
             return batch, torch.softmax(batch, dim=-1)
 
     monkeypatch.setitem(encoders.ENCODERS, "inception", SyntheticEncoder)
-    monkeypatch.setattr(evaluation, "generate_images", lambda *args, **kwargs: (images[:, 0].copy(), 0.0))
+    monkeypatch.setattr(evaluation, "generate_images", lambda *args, **kwargs: (images.copy(), 0.0))
     summary = evaluation.evaluate_images(None, tokenizer, images, cfg, "cpu")
-    assert seen == [(5, 4, 4), (5, 4, 4)]
+    assert seen == [(5, 1, 4, 4), (5, 1, 4, 4)]
     assert abs(summary["inception"]["fid"]) < 1e-6
     assert summary["inception"]["precision"] == 1.0
     assert summary["inception"]["recall"] == 1.0
