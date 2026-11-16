@@ -84,7 +84,6 @@ def main():
     if len(real_all) < args.num_images:
         raise ValueError('В референсе меньше картинок, чем --num-images')
     real = np.asarray(real_all[:args.num_images])
-    # потолки считаем на других test-картинках, если их хватает
     spare = real_all[args.num_images:2 * args.num_images]
     ceiling_source = np.asarray(spare) if len(spare) == args.num_images else real
 
