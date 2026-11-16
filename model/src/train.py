@@ -289,6 +289,14 @@ def train_model(
                     epoch,
                     best_val_loss,
                 )
+                save_checkpoint(
+                    checkpoint_dir / f"step_{step}.pt",
+                    model,
+                    optimizer,
+                    step,
+                    epoch,
+                    best_val_loss,
+                )
 
             if max_steps is not None and step >= max_steps:
                 break

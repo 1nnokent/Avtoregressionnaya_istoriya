@@ -30,7 +30,7 @@ metrics:
   encoders: [inception]
   train_interval: null       # промежуточные метрики дорогие; считаем в конце
 generation:
-  num_images: 5000
+  num_images: 1000             # как у iGPT и диффузии
   batch_size: 100
   temperature: 1.0           # как у iGPT; 0.7 занижает разнообразие (recall)
   top_k: null
