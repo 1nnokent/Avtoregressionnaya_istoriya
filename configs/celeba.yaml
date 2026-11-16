@@ -10,7 +10,7 @@ data:
     size: 32                 # одно разрешение для всех моделей
   train_limit: null
   tokenizer_fit_limit: 20000
-  batch_size: 32             # как у iGPT/flow
+  batch_size: 16             # 32 не влезает в T4 (OOM); шагов вдвое больше, данных столько же
   evaluation_split: test
 model:
   params:
@@ -21,7 +21,8 @@ model:
     dropout: 0.0
 training:
   epochs: 1
-  max_steps: 5000            # 5000 × 32 = 160k картинок, столько же видели iGPT и flow
+  max_steps: 10000           # 10000 × 16 = 160k картинок, столько же видели iGPT и flow
+  checkpoint_interval: 1000  # step_1000 ... step_10000 = 32k ... 160k картинок
   precision: fp16
   eval_interval: 500
   max_val_batches: 20
@@ -31,7 +32,7 @@ metrics:
   train_interval: null       # промежуточные метрики дорогие; считаем в конце
 generation:
   num_images: 1000             # как у iGPT и диффузии
-  batch_size: 100
+  batch_size: 25             # KV-кеш генерации в fp32; 100 не влезает в T4
   temperature: 1.0           # как у iGPT; 0.7 занижает разнообразие (recall)
   top_k: null
 tokenizer:
