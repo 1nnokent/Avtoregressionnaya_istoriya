@@ -17,6 +17,9 @@ CIFAR10_HF_URL = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/p
 CELEBA_HF_URL = "https://huggingface.co/datasets/flwrlabs/celeba/resolve/main/img_align%2Bidentity%2Battr/{shard}.parquet"
 CELEBA_HF_SHARDS = {"train": "train-00000-of-00019", "val": "valid-00000-of-00003", "test": "test-00000-of-00003"}
 LUMA = np.array([0.299, 0.587, 0.114], dtype=np.float32)
+COMMON_CELEBA_DIR = "celeba_common"
+COMMON_BASE_SIZE = 64
+UINT8_MAX = 255.0
 
 
 def train_val_indices(n: int, val_fraction: float = 0.1, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
@@ -107,3 +110,38 @@ def _load_cifar10(split: str, root: Path) -> np.ndarray:
     path = _download(CIFAR10_HF_URL.format(split=split), root / "cifar10" / f"{split}.parquet")
     pngs = pq.read_table(path, columns=["img"]).column("img").to_pylist()
     return np.stack([np.asarray(Image.open(io.BytesIO(png["bytes"]))) for png in pngs]).transpose(0, 3, 1, 2)
+
+def downsample_uint8(images, size):
+    """[N, H, W, 3] uint8 -> [N, size, size, 3] через LANCZOS. Одинаково для всех моделей."""
+    images = np.asarray(images)
+    if images.shape[1] == size:
+        return images
+    return np.stack([
+        np.asarray(Image.fromarray(image).resize((size, size), Image.Resampling.LANCZOS))
+        for image in images
+    ])
+
+
+def load_common_celeba(
+    ds_name: str = "celeba",
+    split: str = "train",
+    gray: bool = False,
+    size: int = COMMON_BASE_SIZE,
+    limit: int | None = None,
+    val_fraction: float = 0.1,   # не используется, нужен для совместимости с конфигом
+    seed: int = 0,
+    root: str | Path = DATA_DIR,
+) -> np.ndarray:
+    path = Path(root) / COMMON_CELEBA_DIR / f"celeba_{split}_{COMMON_BASE_SIZE}px.npy"
+    if not path.exists():
+        raise FileNotFoundError(f"{path}: сначала запустите compare/prepare_celeba.py --split {split}")
+    cache = np.load(path, mmap_mode="r")
+    if limit is None:
+        indices = np.arange(len(cache))
+    else:
+        indices = np.sort(np.random.default_rng(seed).permutation(len(cache))[:limit])
+    images = downsample_uint8(cache[indices], size)
+    images = images.transpose(0, 3, 1, 2).astype(np.float32) / UINT8_MAX
+    if gray:
+        images = np.einsum("c,nchw->nhw", LUMA, images)[:, None]
+    return images

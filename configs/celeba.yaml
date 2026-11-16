@@ -1,13 +1,36 @@
 extends: base.yaml
 experiment:
   name: celeba_dct
+  device: auto
 data:
+  target: datasets.src.datasets_loader:load_common_celeba
   params:
     ds_name: celeba
     gray: false
-    size: 32
-  train_limit: 50000
-  batch_size: 16
+    size: 32                 # одно разрешение для всех моделей
+  train_limit: null
+  tokenizer_fit_limit: 20000
+  batch_size: 32             # как у iGPT/flow
+  evaluation_split: test
+model:
+  params:
+    d_model: 512
+    n_heads: 8
+    n_layers: 8              # ~25M параметров; 24 слоя = масштаб iGPT, но обучение намного дольше
+    d_ff: 2048
+    dropout: 0.0
+training:
+  epochs: 1
+  max_steps: 5000            # 5000 × 32 = 160k картинок, столько же видели iGPT и flow
+  precision: fp16
+  eval_interval: 500
+  max_val_batches: 20
 metrics:
   names: [fid, precision, recall]
   encoders: [inception]
+  train_interval: null       # промежуточные метрики дорогие; считаем в конце
+generation:
+  num_images: 5000
+  batch_size: 100
+  temperature: 1.0           # как у iGPT; 0.7 занижает разнообразие (recall)
+  top_k: null
