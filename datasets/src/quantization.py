@@ -19,7 +19,7 @@ class Quantizer:
     def fit(self, sequences: np.ndarray) -> "Quantizer":
         sequences = np.asarray(sequences, dtype=np.float64)
         if self.per_position:
-            columns = sequences.T
+            columns = [sequences] if sequences.ndim == 1 else sequences.T
         else:
             columns = [sequences.ravel()]
         fitted = [self._fit_column(column) for column in columns]
@@ -30,7 +30,7 @@ class Quantizer:
     def encode(self, sequences: np.ndarray) -> np.ndarray:
         self._check_fitted()
         sequences = np.asarray(sequences)
-        if not self.per_position:
+        if not self.per_position or sequences.ndim == 1:
             return np.searchsorted(self.thresholds[0], sequences, side="right").astype(np.int64)
         tokens = np.empty(sequences.shape, dtype=np.int64)
         for position, thresholds in enumerate(self.thresholds):
@@ -40,7 +40,7 @@ class Quantizer:
     def decode(self, tokens: np.ndarray) -> np.ndarray:
         self._check_fitted()
         tokens = np.asarray(tokens)
-        if not self.per_position:
+        if not self.per_position or tokens.ndim == 1:
             return self.centers[0][tokens]
         return np.take_along_axis(self.centers.T, tokens.reshape(-1, tokens.shape[-1]), axis=0).reshape(tokens.shape)
 
