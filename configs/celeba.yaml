@@ -34,3 +34,9 @@ generation:
   batch_size: 100
   temperature: 1.0           # как у iGPT; 0.7 занижает разнообразие (recall)
   top_k: null
+tokenizer:
+  params:
+    normalization:
+      transform: none          # победитель pipeline_demo.ipynb: без signed_log
+      scaling: minmax
+      per_position: true       # свой min/max для каждой позиции (частоты)
