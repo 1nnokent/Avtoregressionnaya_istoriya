@@ -82,6 +82,38 @@ def test_legacy_uniform_tokenizer_archive_loads(tmp_path):
     np.testing.assert_array_equal(restored.encode(images), tokenizer.encode(images))
 
 
+def test_scalar_kmeans_tokenizer_archive_preserves_tokens(tmp_path):
+    images = np.random.default_rng(13).random((16, 3, 4, 4)).astype(np.float32)
+    tokenizer = Tokenizer(
+        {
+            "quantization": {
+                "method": "kmeans",
+                "grouping": "scalar_channels",
+                "num_bins": 8,
+                "sample_size": 128,
+                "iterations": 5,
+                "seed": 6,
+            }
+        }
+    ).fit(images)
+    path = tmp_path / "tokenizer.npz"
+
+    save_tokenizer(path, tokenizer)
+    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+
+    expected_tokens = tokenizer.encode(images)
+    np.testing.assert_array_equal(restored.encode(images), expected_tokens)
+    np.testing.assert_allclose(
+        restored.decode(expected_tokens), tokenizer.decode(expected_tokens)
+    )
+    with np.load(path, allow_pickle=False) as state:
+        assert {
+            "quantizer.centers",
+            "quantizer.channels",
+            "quantizer.positions",
+        } <= set(state.files)
+
+
 def test_tokens_connect_to_original_model_without_training():
     images = np.random.default_rng(2).random((2, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer().fit(images)

@@ -19,6 +19,19 @@ def fine_config(**overrides):
     return {**config, **overrides}
 
 
+def scalar_kmeans_config(num_bins=8, **overrides):
+    quantization = {
+        "method": "kmeans",
+        "grouping": "scalar_channels",
+        "num_bins": num_bins,
+        "sample_size": 512,
+        "iterations": 5,
+        "seed": 13,
+    }
+    quantization.update(overrides)
+    return {"quantization": quantization}
+
+
 @pytest.mark.parametrize("decomposition", DECOMPOSITIONS)
 @pytest.mark.parametrize("ordering", ORDERINGS)
 def test_encode_decode_every_decomposition_and_ordering(
@@ -102,3 +115,52 @@ def test_unknown_state_format_is_rejected(images):
 
     with pytest.raises(ValueError, match="unsupported tokenizer state format 99"):
         Tokenizer().load_state_dict(state)
+
+
+def test_scalar_kmeans_cifar_shape_uses_3072_tokens_and_256_ids():
+    images = np.random.default_rng(10).random((4, 3, 32, 32)).astype(np.float32)
+    tokenizer = Tokenizer(
+        scalar_kmeans_config(
+            num_bins=256, sample_size=768, iterations=2, seed=4
+        )
+    ).fit(images)
+
+    tokens = tokenizer.encode(images)
+    restored = tokenizer.decode(tokens)
+
+    assert tokens.shape == (4, 3072)
+    assert tokens.dtype == np.int64
+    assert tokens.min() >= 0 and tokens.max() < 256
+    assert tokenizer.sequence_length == 3072
+    assert tokenizer.vocab_size == 256
+    assert restored.shape == images.shape
+
+
+def test_scalar_kmeans_validation_encoding_does_not_refit(images):
+    tokenizer = Tokenizer(scalar_kmeans_config()).fit(images[:20])
+    state_before = {
+        key: value.copy() for key, value in tokenizer.state_dict().items()
+    }
+
+    tokenizer.encode(images[20:])
+
+    state_after = tokenizer.state_dict()
+    assert state_before.keys() == state_after.keys()
+    for key in state_before:
+        np.testing.assert_array_equal(state_after[key], state_before[key])
+
+
+def test_scalar_kmeans_configuration_rejects_unknown_grouping():
+    with pytest.raises(ValueError, match="unknown KMeans grouping"):
+        Tokenizer(scalar_kmeans_config(grouping="spatial"))
+
+
+def test_scalar_kmeans_integration_keeps_uniform_tokens_unchanged(images):
+    default = Tokenizer().fit(images)
+    explicit_uniform = Tokenizer({"quantization": {"method": "uniform"}}).fit(
+        images
+    )
+
+    np.testing.assert_array_equal(
+        explicit_uniform.encode(images), default.encode(images)
+    )
