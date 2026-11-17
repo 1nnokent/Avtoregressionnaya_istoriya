@@ -174,3 +174,106 @@ def test_kmeans_scalar_rejects_non_ncl_coefficients():
 def test_kmeans_scalar_rejects_unknown_grouping():
     with pytest.raises(ValueError, match="unknown KMeans grouping"):
         KMeansQuantizer(grouping="spatial")
+
+
+@pytest.fixture
+def joint_coefficients():
+    return np.random.default_rng(14).normal(size=(30, 3, 7))
+
+
+def test_kmeans_joint_vectors_use_matching_channel_positions():
+    quantizer = KMeansQuantizer(num_bins=2, grouping="joint_channels")
+    quantizer.load_state_dict(
+        {
+            "centers": np.array([[0.0, 0.0], [10.0, 100.0]]),
+            "channels": np.asarray(2, dtype=np.int64),
+            "positions": np.asarray(2, dtype=np.int64),
+        }
+    )
+    coefficients = np.array([[[0.0, 10.0], [0.0, 100.0]]])
+
+    tokens = quantizer.encode(coefficients)
+    decoded = quantizer.decode(tokens)
+
+    np.testing.assert_array_equal(tokens, np.array([[0, 1]]))
+    np.testing.assert_array_equal(decoded, coefficients)
+    assert decoded.shape == (1, 2, 2)
+
+
+@pytest.mark.parametrize("num_bins", [256, 768])
+def test_kmeans_joint_center_shape_and_one_token_per_position(num_bins):
+    coefficients = np.random.default_rng(15).normal(size=(4, 3, 192))
+    quantizer = KMeansQuantizer(
+        num_bins=num_bins,
+        grouping="joint_channels",
+        sample_size=768,
+        iterations=1,
+        seed=5,
+    ).fit(coefficients)
+
+    tokens = quantizer.encode(coefficients)
+
+    assert quantizer.centers.shape == (num_bins, 3)
+    assert tokens.shape == (4, 192)
+    assert tokens.min() >= 0 and tokens.max() < num_bins
+
+
+def test_kmeans_joint_fit_and_state_are_deterministic(joint_coefficients):
+    params = {
+        "num_bins": 8,
+        "grouping": "joint_channels",
+        "sample_size": 150,
+        "iterations": 10,
+        "seed": 12,
+    }
+    first = KMeansQuantizer(**params).fit(joint_coefficients)
+    second = KMeansQuantizer(**params).fit(joint_coefficients)
+    restored = KMeansQuantizer(
+        num_bins=8, grouping="joint_channels"
+    )
+    restored.load_state_dict(first.state_dict())
+
+    np.testing.assert_array_equal(first.centers, second.centers)
+    np.testing.assert_array_equal(restored.centers, first.centers)
+    np.testing.assert_array_equal(
+        restored.encode(joint_coefficients), first.encode(joint_coefficients)
+    )
+
+
+def test_kmeans_joint_rejects_channel_mismatch(joint_coefficients):
+    quantizer = KMeansQuantizer(
+        num_bins=4,
+        grouping="joint_channels",
+        sample_size=100,
+        iterations=5,
+        seed=2,
+    ).fit(joint_coefficients)
+
+    with pytest.raises(ValueError, match="3 channels"):
+        quantizer.encode(joint_coefficients[:, :2])
+
+
+def test_kmeans_joint_rejects_malformed_centers():
+    quantizer = KMeansQuantizer(num_bins=4, grouping="joint_channels")
+
+    with pytest.raises(ValueError, match="joint KMeans centers"):
+        quantizer.load_state_dict(
+            {
+                "centers": np.zeros((3, 4)),
+                "channels": np.asarray(3, dtype=np.int64),
+                "positions": np.asarray(5, dtype=np.int64),
+            }
+        )
+
+
+def test_kmeans_joint_rejects_fewer_observations_than_centroids():
+    coefficients = np.random.default_rng(16).normal(size=(2, 3, 4))
+
+    with pytest.raises(ValueError, match="sampled observations"):
+        KMeansQuantizer(
+            num_bins=9,
+            grouping="joint_channels",
+            sample_size=8,
+            iterations=5,
+            seed=1,
+        ).fit(coefficients)
