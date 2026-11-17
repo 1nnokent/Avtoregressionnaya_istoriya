@@ -32,6 +32,22 @@ def scalar_kmeans_config(num_bins=8, **overrides):
     return {"quantization": quantization}
 
 
+def joint_kmeans_config(num_bins=8, **overrides):
+    quantization = {
+        "method": "kmeans",
+        "grouping": "joint_channels",
+        "num_bins": num_bins,
+        "sample_size": 512,
+        "iterations": 5,
+        "seed": 17,
+    }
+    quantization.update(overrides)
+    return {
+        "normalization": {"per_position": False},
+        "quantization": quantization,
+    }
+
+
 @pytest.mark.parametrize("decomposition", DECOMPOSITIONS)
 @pytest.mark.parametrize("ordering", ORDERINGS)
 def test_encode_decode_every_decomposition_and_ordering(
@@ -146,8 +162,8 @@ def test_scalar_kmeans_validation_encoding_does_not_refit(images):
 
     state_after = tokenizer.state_dict()
     assert state_before.keys() == state_after.keys()
-    for key in state_before:
-        np.testing.assert_array_equal(state_after[key], state_before[key])
+    for key, value in state_before.items():
+        np.testing.assert_array_equal(state_after[key], value)
 
 
 def test_scalar_kmeans_configuration_rejects_unknown_grouping():
@@ -164,3 +180,26 @@ def test_scalar_kmeans_integration_keeps_uniform_tokens_unchanged(images):
     np.testing.assert_array_equal(
         explicit_uniform.encode(images), default.encode(images)
     )
+
+
+def test_joint_kmeans_cifar_shape_uses_1024_tokens_and_decodes_rgb():
+    images = np.random.default_rng(18).random((2, 3, 32, 32)).astype(np.float32)
+    tokenizer = Tokenizer(
+        joint_kmeans_config(num_bins=16, sample_size=1024, iterations=3)
+    ).fit(images)
+
+    tokens = tokenizer.encode(images)
+    restored = tokenizer.decode(tokens)
+
+    assert tokens.shape == (2, 1024)
+    assert tokenizer.sequence_length == 1024
+    assert tokenizer.vocab_size == 16
+    assert restored.shape == (2, 3, 32, 32)
+
+
+def test_joint_kmeans_rejects_channel_count_after_fitting():
+    images = np.random.default_rng(19).random((8, 3, 8, 8)).astype(np.float32)
+    tokenizer = Tokenizer(joint_kmeans_config()).fit(images)
+
+    with pytest.raises(ValueError, match="fitted on images"):
+        tokenizer.encode(images[:, :1])

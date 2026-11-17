@@ -8,9 +8,9 @@ import pytest
 import torch
 
 from datasets.src.tokenizer import Tokenizer
+from experiments import run as runner
 from experiments.artifacts import RunLog, load_tokenizer, save_tokenizer
 from experiments.config import ROOT, load_config, validate
-from experiments import run as runner
 from model.src.train import prepare_batch
 
 
@@ -112,6 +112,70 @@ def test_scalar_kmeans_tokenizer_archive_preserves_tokens(tmp_path):
             "quantizer.channels",
             "quantizer.positions",
         } <= set(state.files)
+
+
+@pytest.mark.parametrize("num_bins", [256, 768])
+def test_joint_kmeans_model_uses_1024_tokens_and_configured_vocab(num_bins):
+    images = np.random.default_rng(20).random((1, 3, 32, 32)).astype(np.float32)
+    tokenizer = Tokenizer(
+        {
+            "normalization": {"per_position": False},
+            "quantization": {
+                "method": "kmeans",
+                "grouping": "joint_channels",
+                "num_bins": num_bins,
+                "sample_size": 1024,
+                "iterations": 1,
+                "seed": 8,
+            },
+        }
+    ).fit(images)
+    cfg = config()
+    cfg["model"]["params"] = {
+        "d_model": 8,
+        "n_heads": 2,
+        "n_layers": 1,
+        "d_ff": 16,
+        "dropout": 0,
+    }
+    model = runner.make_model(cfg, tokenizer).eval()
+    tokens = tokenizer.encode(images)
+    inputs, targets = prepare_batch((torch.from_numpy(tokens),), model, "cpu")
+
+    with torch.no_grad():
+        logits = model(inputs)
+
+    assert tokenizer.sequence_length == 1024
+    assert tokenizer.vocab_size == num_bins
+    assert logits.shape == (1, 1024, num_bins)
+    assert targets.shape == (1, 1024)
+
+
+def test_joint_kmeans_tokenizer_archive_preserves_tokens(tmp_path):
+    images = np.random.default_rng(21).random((8, 3, 8, 8)).astype(np.float32)
+    tokenizer = Tokenizer(
+        {
+            "normalization": {"per_position": False},
+            "quantization": {
+                "method": "kmeans",
+                "grouping": "joint_channels",
+                "num_bins": 16,
+                "sample_size": 256,
+                "iterations": 5,
+                "seed": 3,
+            },
+        }
+    ).fit(images)
+    path = tmp_path / "tokenizer.npz"
+
+    save_tokenizer(path, tokenizer)
+    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+
+    expected_tokens = tokenizer.encode(images)
+    np.testing.assert_array_equal(restored.encode(images), expected_tokens)
+    np.testing.assert_allclose(
+        restored.decode(expected_tokens), tokenizer.decode(expected_tokens)
+    )
 
 
 def test_tokens_connect_to_original_model_without_training():
