@@ -79,6 +79,23 @@ def test_partial_config_keeps_defaults():
     )
 
 
+def test_default_rgb_transform_preserves_existing_tokens(images):
+    default = Tokenizer().fit(images)
+    explicit_rgb = Tokenizer({"channel_transform": "rgb"}).fit(images)
+
+    np.testing.assert_array_equal(explicit_rgb.encode(images), default.encode(images))
+
+
+def test_default_grayscale_transform_preserves_existing_tokens(images):
+    gray = images[:, :1]
+    default = Tokenizer().fit(gray)
+    explicit_grayscale = Tokenizer({"channel_transform": "grayscale"}).fit(gray)
+
+    np.testing.assert_array_equal(
+        explicit_grayscale.encode(gray), default.encode(gray)
+    )
+
+
 def test_unknown_state_format_is_rejected(images):
     state = Tokenizer().fit(images).state_dict()
     state["state_format"] = np.asarray(99, dtype=np.int64)
