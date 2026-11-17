@@ -1,6 +1,5 @@
 import numpy as np
 
-
 CHANNEL_TRANSFORMS = ("grayscale", "ycbcr", "rgb")
 _RGB_TO_YCBCR = np.array(
     [

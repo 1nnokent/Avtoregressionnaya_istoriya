@@ -31,40 +31,45 @@ class Quantizer:
         return self
 
     def encode(self, sequences: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        thresholds, _ = self._fitted_state()
         sequences = np.asarray(sequences)
         if not self.per_position or sequences.ndim == 1:
-            return np.searchsorted(self.thresholds[0], sequences, side="right").astype(np.int64)
+            return np.searchsorted(thresholds[0], sequences, side="right").astype(np.int64)
         tokens = np.empty(sequences.shape, dtype=np.int64)
-        for position, thresholds in enumerate(self.thresholds):
-            tokens[..., position] = np.searchsorted(thresholds, sequences[..., position], side="right")
+        for position, position_thresholds in enumerate(thresholds):
+            tokens[..., position] = np.searchsorted(
+                position_thresholds, sequences[..., position], side="right"
+            )
         return tokens
 
     def decode(self, tokens: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        _, centers = self._fitted_state()
         tokens = np.asarray(tokens)
         if not self.per_position or tokens.ndim == 1:
-            return self.centers[0][tokens]
-        return np.take_along_axis(self.centers.T, tokens.reshape(-1, tokens.shape[-1]), axis=0).reshape(tokens.shape)
+            return centers[0][tokens]
+        return np.take_along_axis(
+            centers.T, tokens.reshape(-1, tokens.shape[-1]), axis=0
+        ).reshape(tokens.shape)
 
     def _fit_column(self, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         edges = np.linspace(values.min(), values.max(), self.num_bins + 1)
         return edges[1:-1], (edges[:-1] + edges[1:]) / 2
 
     def state_dict(self) -> dict[str, np.ndarray]:
-        self._check_fitted()
+        thresholds, centers = self._fitted_state()
         return {
-            "thresholds": np.asarray(self.thresholds).copy(),
-            "centers": np.asarray(self.centers).copy(),
+            "thresholds": thresholds.copy(),
+            "centers": centers.copy(),
         }
 
     def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
         self.thresholds = np.asarray(state["thresholds"], dtype=np.float64).copy()
         self.centers = np.asarray(state["centers"], dtype=np.float64).copy()
 
-    def _check_fitted(self):
-        if self.thresholds is None:
+    def _fitted_state(self) -> tuple[np.ndarray, np.ndarray]:
+        if self.thresholds is None or self.centers is None:
             raise RuntimeError("call fit() on train data first")
+        return self.thresholds, self.centers
 
 
 @dataclass
@@ -87,8 +92,10 @@ class KMeansQuantizer:
 
     def fit(self, coefficients: np.ndarray) -> "KMeansQuantizer":
         coefficients = _as_ncl(coefficients)
-        self.channels = coefficients.shape[1]
-        self.positions = coefficients.shape[2]
+        channels = coefficients.shape[1]
+        positions = coefficients.shape[2]
+        self.channels = channels
+        self.positions = positions
         match self.grouping:
             case "scalar_channels":
                 self.centers = np.stack(
@@ -100,12 +107,12 @@ class KMeansQuantizer:
                             self.iterations,
                             self.seed + channel,
                         )
-                        for channel in range(self.channels)
+                        for channel in range(channels)
                     ]
                 )
             case "joint_channels":
                 observations = coefficients.transpose(0, 2, 1).reshape(
-                    -1, self.channels
+                    -1, channels
                 )
                 self.centers = fit_codebook(
                     observations,
@@ -117,8 +124,10 @@ class KMeansQuantizer:
         return self
 
     def encode(self, coefficients: np.ndarray) -> np.ndarray:
-        self._check_fitted()
-        coefficients = self._validate_coefficients(coefficients)
+        centers, channels, positions = self._fitted_state()
+        coefficients = self._validate_coefficients(
+            coefficients, channels, positions
+        )
         batch_size = len(coefficients)
         match self.grouping:
             case "scalar_channels":
@@ -126,30 +135,31 @@ class KMeansQuantizer:
                     [
                         assign_codebook(
                             coefficients[:, channel].reshape(-1),
-                            self.centers[channel],
-                        ).reshape(batch_size, self.positions)
-                        for channel in range(self.channels)
+                            centers[channel],
+                        ).reshape(batch_size, positions)
+                        for channel in range(channels)
                     ],
                     axis=1,
                 )
-                return tokens.reshape(batch_size, self.channels * self.positions)
+                return tokens.reshape(batch_size, channels * positions)
             case "joint_channels":
                 observations = coefficients.transpose(0, 2, 1).reshape(
-                    -1, self.channels
+                    -1, channels
                 )
-                return assign_codebook(observations, self.centers).reshape(
-                    batch_size, self.positions
+                return assign_codebook(observations, centers).reshape(
+                    batch_size, positions
                 )
+        raise AssertionError(f"unsupported KMeans grouping {self.grouping!r}")
 
     def decode(self, tokens: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        centers, channels, positions = self._fitted_state()
         tokens = np.asarray(tokens)
         if tokens.ndim == 1:
             tokens = tokens[None]
         expected_length = (
-            self.channels * self.positions
+            channels * positions
             if self.grouping == "scalar_channels"
-            else self.positions
+            else positions
         )
         if tokens.ndim != 2 or tokens.shape[1] != expected_length:
             raise ValueError(
@@ -160,27 +170,35 @@ class KMeansQuantizer:
         match self.grouping:
             case "scalar_channels":
                 channel_tokens = tokens.reshape(
-                    -1, self.channels, self.positions
+                    -1, channels, positions
                 )
                 return np.stack(
                     [
                         decode_codebook(
-                            channel_tokens[:, channel], self.centers[channel]
+                            channel_tokens[:, channel], centers[channel]
                         )[..., 0]
-                        for channel in range(self.channels)
+                        for channel in range(channels)
                     ],
                     axis=1,
                 )
             case "joint_channels":
-                vectors = decode_codebook(tokens, self.centers)
+                vectors = decode_codebook(tokens, centers)
                 return vectors.transpose(0, 2, 1)
+        raise AssertionError(f"unsupported KMeans grouping {self.grouping!r}")
+
+    @property
+    def sequence_length(self) -> int:
+        _, channels, positions = self._fitted_state()
+        if self.grouping == "scalar_channels":
+            return channels * positions
+        return positions
 
     def state_dict(self) -> dict[str, np.ndarray]:
-        self._check_fitted()
+        centers, channels, positions = self._fitted_state()
         return {
-            "centers": np.asarray(self.centers).copy(),
-            "channels": np.asarray(self.channels, dtype=np.int64),
-            "positions": np.asarray(self.positions, dtype=np.int64),
+            "centers": centers.copy(),
+            "channels": np.asarray(channels, dtype=np.int64),
+            "positions": np.asarray(positions, dtype=np.int64),
         }
 
     def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
@@ -202,23 +220,26 @@ class KMeansQuantizer:
         self.channels = channels
         self.positions = positions
 
-    def _validate_coefficients(self, coefficients: np.ndarray) -> np.ndarray:
+    def _validate_coefficients(
+        self, coefficients: np.ndarray, channels: int, positions: int
+    ) -> np.ndarray:
         coefficients = _as_ncl(coefficients)
-        if coefficients.shape[1] != self.channels:
+        if coefficients.shape[1] != channels:
             raise ValueError(
-                f"quantizer was fitted on {self.channels} channels, "
+                f"quantizer was fitted on {channels} channels, "
                 f"got {coefficients.shape[1]}"
             )
-        if coefficients.shape[2] != self.positions:
+        if coefficients.shape[2] != positions:
             raise ValueError(
-                f"quantizer was fitted on {self.positions} positions, "
+                f"quantizer was fitted on {positions} positions, "
                 f"got {coefficients.shape[2]}"
             )
         return coefficients
 
-    def _check_fitted(self) -> None:
-        if self.centers is None:
+    def _fitted_state(self) -> tuple[np.ndarray, int, int]:
+        if self.centers is None or self.channels is None or self.positions is None:
             raise RuntimeError("call fit() on train coefficients first")
+        return self.centers, self.channels, self.positions
 
 
 def _as_ncl(coefficients: np.ndarray) -> np.ndarray:

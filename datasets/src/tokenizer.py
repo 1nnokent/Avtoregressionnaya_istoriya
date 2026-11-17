@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import cast
 
 import numpy as np
 
@@ -49,9 +50,13 @@ class Tokenizer:
 
     @property
     def sequence_length(self) -> int:
-        self._check_fitted()
-        channels, height, width = self.image_shape
-        return channels * height * width
+        image_shape = self._check_fitted()
+        match self.quantizer:
+            case KMeansQuantizer():
+                return self.quantizer.sequence_length
+            case _:
+                channels, height, width = image_shape
+                return channels * height * width
 
     def sequence(self, images: np.ndarray) -> np.ndarray:
         images = _as_nchw(images)
@@ -62,7 +67,7 @@ class Tokenizer:
         return ordered.reshape(len(ordered), -1)
 
     def sequence_to_images(self, sequences: np.ndarray) -> np.ndarray:
-        channels, height, width = self.image_shape
+        channels, height, width = self._check_fitted()
         ordered = sequences.reshape(len(sequences), channels, height * width)
         transformed = self.decomposition.inverse(
             invert_ordering(ordered, self._indices(height, width), height, width)
@@ -78,10 +83,12 @@ class Tokenizer:
         return self
 
     def encode(self, images: np.ndarray) -> np.ndarray:
-        self._check_fitted()
+        image_shape = self._check_fitted()
         images = _as_nchw(images)
-        if images.shape[1:] != self.image_shape:
-            raise ValueError(f"tokenizer was fitted on images {self.image_shape}, got {images.shape[1:]}")
+        if images.shape[1:] != image_shape:
+            raise ValueError(
+                f"tokenizer was fitted on images {image_shape}, got {images.shape[1:]}"
+            )
         normalized = self.normalizer(self.sequence(images))
         return self.quantizer.encode(self._quantizer_input(normalized))
 
@@ -94,10 +101,10 @@ class Tokenizer:
         return self.sequence_to_images(self.normalizer.inverse(normalized))
 
     def state_dict(self) -> dict[str, np.ndarray]:
-        self._check_fitted()
+        image_shape = self._check_fitted()
         state = {
             "state_format": np.asarray(STATE_FORMAT_VERSION, dtype=np.int64),
-            "image_shape": np.asarray(self.image_shape, dtype=np.int64),
+            "image_shape": np.asarray(image_shape, dtype=np.int64),
         }
         state.update(
             {f"normalizer.{key}": value for key, value in self.normalizer.state_dict().items()}
@@ -111,7 +118,10 @@ class Tokenizer:
         version = int(np.asarray(state["state_format"]).item())
         if version != STATE_FORMAT_VERSION:
             raise ValueError(f"unsupported tokenizer state format {version}")
-        self.image_shape = tuple(int(value) for value in state["image_shape"])
+        self.image_shape = cast(
+            tuple[int, int, int],
+            tuple(int(value) for value in state["image_shape"]),
+        )
         self.normalizer.load_state_dict(
             {
                 key.removeprefix("normalizer."): value
@@ -133,7 +143,7 @@ class Tokenizer:
     def _quantizer_input(self, sequences: np.ndarray) -> np.ndarray:
         if not isinstance(self.quantizer, KMeansQuantizer):
             return sequences
-        channels, height, width = self.image_shape
+        channels, height, width = self._check_fitted()
         return sequences.reshape(len(sequences), channels, height * width)
 
     def _channel_transform(self, channels: int) -> ChannelTransform:
@@ -148,9 +158,10 @@ class Tokenizer:
             f"choose one of {CHANNEL_TRANSFORMS}"
         )
 
-    def _check_fitted(self):
+    def _check_fitted(self) -> tuple[int, int, int]:
         if self.image_shape is None:
             raise RuntimeError("call fit() on train images first")
+        return self.image_shape
 
 
 def _as_nchw(images: np.ndarray) -> np.ndarray:
