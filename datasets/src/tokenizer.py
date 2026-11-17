@@ -6,7 +6,7 @@ from .channel_transform import CHANNEL_TRANSFORMS, ChannelTransform
 from .decomposition import get_decomposition
 from .normalization import Normalizer
 from .ordering import forward_ordering, invert_ordering, ordering_indices
-from .quantization import Quantizer
+from .quantization import KMeansQuantizer, Quantizer
 
 
 @dataclass
@@ -22,6 +22,7 @@ class TokenizerConfig:
 
 DEFAULT_NORMALIZATION = {"transform": "signed_log", "log_scale": 255.0, "scaling": "minmax"}
 DEFAULT_QUANTIZATION = {"method": "uniform", "num_bins": 256}
+QUANTIZATION_METHODS = ("uniform", "kmeans")
 STATE_FORMAT_VERSION = 1
 
 
@@ -39,7 +40,7 @@ class Tokenizer:
         )
         self.decomposition = get_decomposition(config.decomposition, **config.decomposition_params)
         self.normalizer = Normalizer(**{**DEFAULT_NORMALIZATION, **config.normalization})
-        self.quantizer = Quantizer(**{**DEFAULT_QUANTIZATION, **config.quantization})
+        self.quantizer = _make_quantizer(config.quantization)
         self.image_shape: tuple[int, int, int] | None = None
 
     @property
@@ -72,7 +73,8 @@ class Tokenizer:
         train_images = _as_nchw(train_images)
         self.image_shape = train_images.shape[1:]
         sequences = self.sequence(train_images)
-        self.quantizer.fit(self.normalizer.fit(sequences)(sequences))
+        normalized = self.normalizer.fit(sequences)(sequences)
+        self.quantizer.fit(self._quantizer_input(normalized))
         return self
 
     def encode(self, images: np.ndarray) -> np.ndarray:
@@ -80,12 +82,16 @@ class Tokenizer:
         images = _as_nchw(images)
         if images.shape[1:] != self.image_shape:
             raise ValueError(f"tokenizer was fitted on images {self.image_shape}, got {images.shape[1:]}")
-        return self.quantizer.encode(self.normalizer(self.sequence(images)))
+        normalized = self.normalizer(self.sequence(images))
+        return self.quantizer.encode(self._quantizer_input(normalized))
 
     def decode(self, tokens: np.ndarray) -> np.ndarray:
         self._check_fitted()
         tokens = np.asarray(tokens).reshape(-1, self.sequence_length)
-        return self.sequence_to_images(self.normalizer.inverse(self.quantizer.decode(tokens)))
+        normalized = self.quantizer.decode(tokens)
+        if isinstance(self.quantizer, KMeansQuantizer):
+            normalized = normalized.reshape(len(normalized), -1)
+        return self.sequence_to_images(self.normalizer.inverse(normalized))
 
     def state_dict(self) -> dict[str, np.ndarray]:
         self._check_fitted()
@@ -124,6 +130,12 @@ class Tokenizer:
     def _indices(self, height: int, width: int) -> np.ndarray:
         return ordering_indices(self.config.ordering, height, width, **self.config.ordering_params)
 
+    def _quantizer_input(self, sequences: np.ndarray) -> np.ndarray:
+        if not isinstance(self.quantizer, KMeansQuantizer):
+            return sequences
+        channels, height, width = self.image_shape
+        return sequences.reshape(len(sequences), channels, height * width)
+
     def _channel_transform(self, channels: int) -> ChannelTransform:
         if self.channel_transform is not None:
             return self.channel_transform
@@ -148,3 +160,18 @@ def _as_nchw(images: np.ndarray) -> np.ndarray:
     if images.ndim != 4:
         raise ValueError(f"expected images (N, H, W) or (N, C, H, W), got shape {images.shape}")
     return images
+
+
+def _make_quantizer(config: dict) -> Quantizer | KMeansQuantizer:
+    settings = {**DEFAULT_QUANTIZATION, **config}
+    method = settings.pop("method")
+    match method:
+        case "uniform":
+            return Quantizer(method=method, **settings)
+        case "kmeans":
+            return KMeansQuantizer(**settings)
+        case _:
+            raise ValueError(
+                f"unknown quantization {method!r}, "
+                f"expected one of {QUANTIZATION_METHODS}"
+            )
