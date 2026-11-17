@@ -51,3 +51,57 @@ def test_identity_transform_rejects_wrong_channel_count(name, channels, message)
 def test_unknown_channel_transform_is_rejected():
     with pytest.raises(ValueError, match="unknown channel transform"):
         ChannelTransform("lab")
+
+
+def test_ycbcr_known_colors_use_centered_chroma():
+    colors = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    ).reshape(5, 3, 1, 1)
+    expected = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.299, -0.168736, 0.5],
+            [0.587, -0.331264, -0.418688],
+            [0.114, 0.5, -0.081312],
+        ]
+    ).reshape(5, 3, 1, 1)
+
+    transformed = ChannelTransform("ycbcr").forward(colors)
+
+    np.testing.assert_allclose(transformed, expected, atol=1e-7)
+
+
+def test_ycbcr_random_batch_roundtrip_preserves_shape_and_values():
+    images = np.random.default_rng(7).random((8, 3, 5, 6))
+    transform = ChannelTransform("ycbcr")
+
+    transformed = transform.forward(images)
+    restored = transform.inverse(transformed)
+
+    assert transformed.shape == images.shape
+    assert restored.shape == images.shape
+    assert np.max(np.abs(restored - images)) < 1e-6
+
+
+def test_ycbcr_inverse_does_not_clip_rgb_values():
+    ycbcr = np.full((1, 3, 1, 1), 0.5)
+
+    restored = ChannelTransform("ycbcr").inverse(ycbcr)
+
+    assert restored.min() < 0.0
+    assert restored.max() > 1.0
+
+
+@pytest.mark.parametrize("method", ["forward", "inverse"])
+def test_ycbcr_rejects_grayscale_input(method):
+    transform = ChannelTransform("ycbcr")
+
+    with pytest.raises(ValueError, match="3 channels"):
+        getattr(transform, method)(np.zeros((2, 1, 4, 5)))
