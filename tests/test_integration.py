@@ -26,6 +26,53 @@ def test_all_example_configs_validate():
     assert block["model"]["params"]["d_model"] == 128
 
 
+@pytest.mark.parametrize(
+    ("dataset", "grouping", "num_bins"),
+    [
+        ("cifar10", "scalar_channels", 256),
+        ("cifar10", "joint_channels", 256),
+        ("cifar10", "joint_channels", 768),
+        ("celeba", "scalar_channels", 256),
+        ("celeba", "joint_channels", 256),
+        ("celeba", "joint_channels", 768),
+    ],
+)
+def test_rgb_kmeans_experiment_matrix(dataset, grouping, num_bins):
+    variant = "scalar" if grouping == "scalar_channels" else "joint"
+    filename = f"{dataset}_dct_kmeans_{variant}_{num_bins}.yaml"
+    config = load_config(ROOT / "configs" / filename)
+
+    validate(config)
+
+    assert config["experiment"]["name"] == filename.removesuffix(".yaml")
+    assert config["data"]["params"]["ds_name"] == dataset
+    assert config["data"]["params"]["gray"] is False
+    assert config["tokenizer"]["params"]["channel_transform"] == "rgb"
+    quantization = config["tokenizer"]["params"]["quantization"]
+    assert quantization["method"] == "kmeans"
+    assert quantization["grouping"] == grouping
+    assert quantization["num_bins"] == num_bins
+
+
+def test_multiple_config_parents_merge_left_to_right(tmp_path):
+    (tmp_path / "first.yaml").write_text(
+        "section:\n  first: 1\n  shared: first\n", encoding="utf-8"
+    )
+    (tmp_path / "second.yaml").write_text(
+        "section:\n  second: 2\n  shared: second\n", encoding="utf-8"
+    )
+    (tmp_path / "child.yaml").write_text(
+        "extends: [first.yaml, second.yaml]\nsection:\n  child: 3\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path / "child.yaml")
+
+    assert config == {
+        "section": {"first": 1, "second": 2, "shared": "second", "child": 3}
+    }
+
+
 def test_circular_inheritance_is_rejected(tmp_path):
     (tmp_path / "a.yaml").write_text("extends: b.yaml")
     (tmp_path / "b.yaml").write_text("extends: a.yaml")
