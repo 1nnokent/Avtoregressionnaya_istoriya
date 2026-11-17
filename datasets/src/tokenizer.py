@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .channel_transform import CHANNEL_TRANSFORMS, ChannelTransform
 from .decomposition import get_decomposition
 from .normalization import Normalizer
 from .ordering import forward_ordering, invert_ordering, ordering_indices
@@ -10,6 +11,7 @@ from .quantization import Quantizer
 
 @dataclass
 class TokenizerConfig:
+    channel_transform: str | None = None
     decomposition: str = "dct"
     decomposition_params: dict = field(default_factory=dict)
     ordering: str = "zigzag"
@@ -30,6 +32,11 @@ class Tokenizer:
         elif isinstance(config, dict):
             config = TokenizerConfig(**config)
         self.config = config
+        self.channel_transform = (
+            None
+            if config.channel_transform is None
+            else ChannelTransform(config.channel_transform)
+        )
         self.decomposition = get_decomposition(config.decomposition, **config.decomposition_params)
         self.normalizer = Normalizer(**{**DEFAULT_NORMALIZATION, **config.normalization})
         self.quantizer = Quantizer(**{**DEFAULT_QUANTIZATION, **config.quantization})
@@ -46,14 +53,20 @@ class Tokenizer:
         return channels * height * width
 
     def sequence(self, images: np.ndarray) -> np.ndarray:
-        coeffs = self.decomposition.forward(_as_nchw(images))
+        images = _as_nchw(images)
+        channels = images.shape[1]
+        transformed = self._channel_transform(channels).forward(images)
+        coeffs = self.decomposition.forward(transformed)
         ordered = forward_ordering(coeffs, self._indices(*coeffs.shape[-2:]))
         return ordered.reshape(len(ordered), -1)
 
     def sequence_to_images(self, sequences: np.ndarray) -> np.ndarray:
         channels, height, width = self.image_shape
         ordered = sequences.reshape(len(sequences), channels, height * width)
-        return self.decomposition.inverse(invert_ordering(ordered, self._indices(height, width), height, width))
+        transformed = self.decomposition.inverse(
+            invert_ordering(ordered, self._indices(height, width), height, width)
+        )
+        return self._channel_transform(channels).inverse(transformed)
 
     def fit(self, train_images: np.ndarray) -> "Tokenizer":
         train_images = _as_nchw(train_images)
@@ -110,6 +123,18 @@ class Tokenizer:
 
     def _indices(self, height: int, width: int) -> np.ndarray:
         return ordering_indices(self.config.ordering, height, width, **self.config.ordering_params)
+
+    def _channel_transform(self, channels: int) -> ChannelTransform:
+        if self.channel_transform is not None:
+            return self.channel_transform
+        if channels == 1:
+            return ChannelTransform("grayscale")
+        if channels == 3:
+            return ChannelTransform("rgb")
+        raise ValueError(
+            f"cannot infer channel transform for {channels} channels; "
+            f"choose one of {CHANNEL_TRANSFORMS}"
+        )
 
     def _check_fitted(self):
         if self.image_shape is None:
