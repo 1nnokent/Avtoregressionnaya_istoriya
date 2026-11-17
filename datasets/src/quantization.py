@@ -5,7 +5,7 @@ import numpy as np
 from .kmeans import assign_codebook, decode_codebook, fit_codebook
 
 METHODS = ("uniform",)
-KMEANS_GROUPINGS = ("scalar_channels",)
+KMEANS_GROUPINGS = ("scalar_channels", "joint_channels")
 
 @dataclass
 class Quantizer:
@@ -89,57 +89,91 @@ class KMeansQuantizer:
         coefficients = _as_ncl(coefficients)
         self.channels = coefficients.shape[1]
         self.positions = coefficients.shape[2]
-        self.centers = np.stack(
-            [
-                fit_codebook(
-                    coefficients[:, channel].reshape(-1),
+        match self.grouping:
+            case "scalar_channels":
+                self.centers = np.stack(
+                    [
+                        fit_codebook(
+                            coefficients[:, channel].reshape(-1),
+                            self.num_bins,
+                            self.sample_size,
+                            self.iterations,
+                            self.seed + channel,
+                        )
+                        for channel in range(self.channels)
+                    ]
+                )
+            case "joint_channels":
+                observations = coefficients.transpose(0, 2, 1).reshape(
+                    -1, self.channels
+                )
+                self.centers = fit_codebook(
+                    observations,
                     self.num_bins,
                     self.sample_size,
                     self.iterations,
-                    self.seed + channel,
+                    self.seed,
                 )
-                for channel in range(self.channels)
-            ]
-        )
         return self
 
     def encode(self, coefficients: np.ndarray) -> np.ndarray:
         self._check_fitted()
         coefficients = self._validate_coefficients(coefficients)
         batch_size = len(coefficients)
-        tokens = np.stack(
-            [
-                assign_codebook(
-                    coefficients[:, channel].reshape(-1), self.centers[channel]
-                ).reshape(batch_size, self.positions)
-                for channel in range(self.channels)
-            ],
-            axis=1,
-        )
-        return tokens.reshape(batch_size, self.channels * self.positions)
+        match self.grouping:
+            case "scalar_channels":
+                tokens = np.stack(
+                    [
+                        assign_codebook(
+                            coefficients[:, channel].reshape(-1),
+                            self.centers[channel],
+                        ).reshape(batch_size, self.positions)
+                        for channel in range(self.channels)
+                    ],
+                    axis=1,
+                )
+                return tokens.reshape(batch_size, self.channels * self.positions)
+            case "joint_channels":
+                observations = coefficients.transpose(0, 2, 1).reshape(
+                    -1, self.channels
+                )
+                return assign_codebook(observations, self.centers).reshape(
+                    batch_size, self.positions
+                )
 
     def decode(self, tokens: np.ndarray) -> np.ndarray:
         self._check_fitted()
         tokens = np.asarray(tokens)
         if tokens.ndim == 1:
             tokens = tokens[None]
-        expected_length = self.channels * self.positions
+        expected_length = (
+            self.channels * self.positions
+            if self.grouping == "scalar_channels"
+            else self.positions
+        )
         if tokens.ndim != 2 or tokens.shape[1] != expected_length:
             raise ValueError(
                 f"expected tokens shaped (N, {expected_length}), got {tokens.shape}"
             )
         if tokens.size and (tokens.min() < 0 or tokens.max() >= self.num_bins):
             raise ValueError(f"tokens must be in [0, {self.num_bins})")
-        channel_tokens = tokens.reshape(-1, self.channels, self.positions)
-        return np.stack(
-            [
-                decode_codebook(channel_tokens[:, channel], self.centers[channel])[
-                    ..., 0
-                ]
-                for channel in range(self.channels)
-            ],
-            axis=1,
-        )
+        match self.grouping:
+            case "scalar_channels":
+                channel_tokens = tokens.reshape(
+                    -1, self.channels, self.positions
+                )
+                return np.stack(
+                    [
+                        decode_codebook(
+                            channel_tokens[:, channel], self.centers[channel]
+                        )[..., 0]
+                        for channel in range(self.channels)
+                    ],
+                    axis=1,
+                )
+            case "joint_channels":
+                vectors = decode_codebook(tokens, self.centers)
+                return vectors.transpose(0, 2, 1)
 
     def state_dict(self) -> dict[str, np.ndarray]:
         self._check_fitted()
@@ -153,10 +187,15 @@ class KMeansQuantizer:
         centers = np.asarray(state["centers"], dtype=np.float64)
         channels = int(np.asarray(state["channels"]).item())
         positions = int(np.asarray(state["positions"]).item())
-        expected_shape = (channels, self.num_bins, 1)
+        expected_shape = (
+            (channels, self.num_bins, 1)
+            if self.grouping == "scalar_channels"
+            else (self.num_bins, channels)
+        )
         if centers.shape != expected_shape:
             raise ValueError(
-                f"expected scalar KMeans centers shaped {expected_shape}, "
+                f"expected {self.grouping.removesuffix('_channels')} KMeans centers "
+                f"shaped {expected_shape}, "
                 f"got {centers.shape}"
             )
         self.centers = centers.copy()
