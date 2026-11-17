@@ -20,6 +20,7 @@ class TokenizerConfig:
 
 DEFAULT_NORMALIZATION = {"transform": "signed_log", "log_scale": 255.0, "scaling": "minmax"}
 DEFAULT_QUANTIZATION = {"method": "uniform", "num_bins": 256}
+STATE_FORMAT_VERSION = 1
 
 
 class Tokenizer:
@@ -72,6 +73,40 @@ class Tokenizer:
         self._check_fitted()
         tokens = np.asarray(tokens).reshape(-1, self.sequence_length)
         return self.sequence_to_images(self.normalizer.inverse(self.quantizer.decode(tokens)))
+
+    def state_dict(self) -> dict[str, np.ndarray]:
+        self._check_fitted()
+        state = {
+            "state_format": np.asarray(STATE_FORMAT_VERSION, dtype=np.int64),
+            "image_shape": np.asarray(self.image_shape, dtype=np.int64),
+        }
+        state.update(
+            {f"normalizer.{key}": value for key, value in self.normalizer.state_dict().items()}
+        )
+        state.update(
+            {f"quantizer.{key}": value for key, value in self.quantizer.state_dict().items()}
+        )
+        return state
+
+    def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
+        version = int(np.asarray(state["state_format"]).item())
+        if version != STATE_FORMAT_VERSION:
+            raise ValueError(f"unsupported tokenizer state format {version}")
+        self.image_shape = tuple(int(value) for value in state["image_shape"])
+        self.normalizer.load_state_dict(
+            {
+                key.removeprefix("normalizer."): value
+                for key, value in state.items()
+                if key.startswith("normalizer.")
+            }
+        )
+        self.quantizer.load_state_dict(
+            {
+                key.removeprefix("quantizer."): value
+                for key, value in state.items()
+                if key.startswith("quantizer.")
+            }
+        )
 
     def _indices(self, height: int, width: int) -> np.ndarray:
         return ordering_indices(self.config.ordering, height, width, **self.config.ordering_params)

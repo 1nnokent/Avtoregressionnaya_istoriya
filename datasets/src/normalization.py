@@ -64,6 +64,17 @@ class Normalizer:
         self._check_fitted()
         return self.invert_transform(normalized * self.spread + self.offset)
 
+    def state_dict(self) -> dict[str, np.ndarray]:
+        self._check_fitted()
+        return {
+            "offset": np.asarray(self.offset).copy(),
+            "spread": np.asarray(self.spread).copy(),
+        }
+
+    def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
+        self.offset = np.asarray(state["offset"], dtype=np.float64).copy()
+        self.spread = np.asarray(state["spread"], dtype=np.float64).copy()
+
     def _check_fitted(self):
         if self.offset is None:
             raise RuntimeError("call fit() on train data first")

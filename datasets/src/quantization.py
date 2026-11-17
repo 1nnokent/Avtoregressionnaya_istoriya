@@ -48,6 +48,17 @@ class Quantizer:
         edges = np.linspace(values.min(), values.max(), self.num_bins + 1)
         return edges[1:-1], (edges[:-1] + edges[1:]) / 2
 
+    def state_dict(self) -> dict[str, np.ndarray]:
+        self._check_fitted()
+        return {
+            "thresholds": np.asarray(self.thresholds).copy(),
+            "centers": np.asarray(self.centers).copy(),
+        }
+
+    def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
+        self.thresholds = np.asarray(state["thresholds"], dtype=np.float64).copy()
+        self.centers = np.asarray(state["centers"], dtype=np.float64).copy()
+
     def _check_fitted(self):
         if self.thresholds is None:
             raise RuntimeError("call fit() on train data first")
