@@ -2,7 +2,10 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from .kmeans import assign_codebook, decode_codebook, fit_codebook
+
 METHODS = ("uniform",)
+KMEANS_GROUPINGS = ("scalar_channels",)
 
 @dataclass
 class Quantizer:
@@ -62,3 +65,127 @@ class Quantizer:
     def _check_fitted(self):
         if self.thresholds is None:
             raise RuntimeError("call fit() on train data first")
+
+
+@dataclass
+class KMeansQuantizer:
+    num_bins: int = 256
+    grouping: str = "scalar_channels"
+    sample_size: int = 200_000
+    iterations: int = 20
+    seed: int = 0
+    centers: np.ndarray | None = field(default=None, repr=False)
+    channels: int | None = field(default=None, repr=False)
+    positions: int | None = field(default=None, repr=False)
+
+    def __post_init__(self):
+        if self.grouping not in KMEANS_GROUPINGS:
+            raise ValueError(
+                f"unknown KMeans grouping {self.grouping!r}, "
+                f"expected one of {KMEANS_GROUPINGS}"
+            )
+
+    def fit(self, coefficients: np.ndarray) -> "KMeansQuantizer":
+        coefficients = _as_ncl(coefficients)
+        self.channels = coefficients.shape[1]
+        self.positions = coefficients.shape[2]
+        self.centers = np.stack(
+            [
+                fit_codebook(
+                    coefficients[:, channel].reshape(-1),
+                    self.num_bins,
+                    self.sample_size,
+                    self.iterations,
+                    self.seed + channel,
+                )
+                for channel in range(self.channels)
+            ]
+        )
+        return self
+
+    def encode(self, coefficients: np.ndarray) -> np.ndarray:
+        self._check_fitted()
+        coefficients = self._validate_coefficients(coefficients)
+        batch_size = len(coefficients)
+        tokens = np.stack(
+            [
+                assign_codebook(
+                    coefficients[:, channel].reshape(-1), self.centers[channel]
+                ).reshape(batch_size, self.positions)
+                for channel in range(self.channels)
+            ],
+            axis=1,
+        )
+        return tokens.reshape(batch_size, self.channels * self.positions)
+
+    def decode(self, tokens: np.ndarray) -> np.ndarray:
+        self._check_fitted()
+        tokens = np.asarray(tokens)
+        if tokens.ndim == 1:
+            tokens = tokens[None]
+        expected_length = self.channels * self.positions
+        if tokens.ndim != 2 or tokens.shape[1] != expected_length:
+            raise ValueError(
+                f"expected tokens shaped (N, {expected_length}), got {tokens.shape}"
+            )
+        if tokens.size and (tokens.min() < 0 or tokens.max() >= self.num_bins):
+            raise ValueError(f"tokens must be in [0, {self.num_bins})")
+        channel_tokens = tokens.reshape(-1, self.channels, self.positions)
+        return np.stack(
+            [
+                decode_codebook(channel_tokens[:, channel], self.centers[channel])[
+                    ..., 0
+                ]
+                for channel in range(self.channels)
+            ],
+            axis=1,
+        )
+
+    def state_dict(self) -> dict[str, np.ndarray]:
+        self._check_fitted()
+        return {
+            "centers": np.asarray(self.centers).copy(),
+            "channels": np.asarray(self.channels, dtype=np.int64),
+            "positions": np.asarray(self.positions, dtype=np.int64),
+        }
+
+    def load_state_dict(self, state: dict[str, np.ndarray]) -> None:
+        centers = np.asarray(state["centers"], dtype=np.float64)
+        channels = int(np.asarray(state["channels"]).item())
+        positions = int(np.asarray(state["positions"]).item())
+        expected_shape = (channels, self.num_bins, 1)
+        if centers.shape != expected_shape:
+            raise ValueError(
+                f"expected scalar KMeans centers shaped {expected_shape}, "
+                f"got {centers.shape}"
+            )
+        self.centers = centers.copy()
+        self.channels = channels
+        self.positions = positions
+
+    def _validate_coefficients(self, coefficients: np.ndarray) -> np.ndarray:
+        coefficients = _as_ncl(coefficients)
+        if coefficients.shape[1] != self.channels:
+            raise ValueError(
+                f"quantizer was fitted on {self.channels} channels, "
+                f"got {coefficients.shape[1]}"
+            )
+        if coefficients.shape[2] != self.positions:
+            raise ValueError(
+                f"quantizer was fitted on {self.positions} positions, "
+                f"got {coefficients.shape[2]}"
+            )
+        return coefficients
+
+    def _check_fitted(self) -> None:
+        if self.centers is None:
+            raise RuntimeError("call fit() on train coefficients first")
+
+
+def _as_ncl(coefficients: np.ndarray) -> np.ndarray:
+    coefficients = np.asarray(coefficients, dtype=np.float64)
+    if coefficients.ndim != 3:
+        raise ValueError(
+            f"expected coefficients shaped (N, C, L), got {coefficients.shape}"
+        )
+    return coefficients
