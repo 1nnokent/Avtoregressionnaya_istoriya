@@ -2,6 +2,15 @@ import numpy as np
 
 
 CHANNEL_TRANSFORMS = ("grayscale", "ycbcr", "rgb")
+_RGB_TO_YCBCR = np.array(
+    [
+        [0.299, 0.587, 0.114],
+        [-0.168736, -0.331264, 0.5],
+        [0.5, -0.418688, -0.081312],
+    ],
+    dtype=np.float64,
+)
+_YCBCR_TO_RGB = np.linalg.inv(_RGB_TO_YCBCR)
 
 
 class ChannelTransform:
@@ -16,13 +25,13 @@ class ChannelTransform:
         images = self._validate(images)
         if self.name in ("grayscale", "rgb"):
             return images.copy()
-        raise NotImplementedError("ycbcr channel transform is not implemented")
+        return _apply_channel_matrix(images, _RGB_TO_YCBCR)
 
     def inverse(self, images: np.ndarray) -> np.ndarray:
         images = self._validate(images)
         if self.name in ("grayscale", "rgb"):
             return images.copy()
-        raise NotImplementedError("ycbcr channel transform is not implemented")
+        return _apply_channel_matrix(images, _YCBCR_TO_RGB)
 
     def _validate(self, images: np.ndarray) -> np.ndarray:
         images = np.asarray(images)
@@ -36,3 +45,10 @@ class ChannelTransform:
                 f"got {images.shape[1]}"
             )
         return images
+
+
+def _apply_channel_matrix(images: np.ndarray, matrix: np.ndarray) -> np.ndarray:
+    dtype = np.result_type(images.dtype, np.float32)
+    values = images.astype(dtype, copy=False)
+    coefficients = matrix.astype(dtype, copy=False)
+    return np.einsum("ij,njhw->nihw", coefficients, values)
