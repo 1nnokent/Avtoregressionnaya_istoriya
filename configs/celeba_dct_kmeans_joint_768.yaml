@@ -1,0 +1,5 @@
+extends:
+  - celeba.yaml
+  - presets/kmeans_joint_768.yaml
+experiment:
+  name: celeba_dct_kmeans_joint_768

@@ -1,0 +1,5 @@
+extends:
+  - celeba.yaml
+  - presets/kmeans_scalar_256.yaml
+experiment:
+  name: celeba_dct_kmeans_scalar_256

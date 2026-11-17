@@ -180,6 +180,7 @@ def _make_quantizer(config: dict) -> Quantizer | KMeansQuantizer:
         case "uniform":
             return Quantizer(method=method, **settings)
         case "kmeans":
+            settings.pop("per_position", None)
             return KMeansQuantizer(**settings)
         case _:
             raise ValueError(

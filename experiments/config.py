@@ -25,11 +25,21 @@ def load_config(path, parents=()):
     with path.open(encoding="utf-8") as source:
         config = yaml.safe_load(source)
     if not isinstance(config, dict):
-        raise ValueError("Config must be a YAML mapping")
-    parent = config.pop("extends", None)
-    if parent:
-        config = merge(load_config(path.parent / parent, (*parents, path)), config)
-    return config
+        raise TypeError("Config must be a YAML mapping")
+    extends = config.pop("extends", [])
+    if isinstance(extends, str):
+        extends = [extends]
+    if not isinstance(extends, list) or not all(
+        isinstance(parent, str) for parent in extends
+    ):
+        raise TypeError("Config extends must be a path or a list of paths")
+    inherited = {}
+    for parent in extends:
+        inherited = merge(
+            inherited,
+            load_config(path.parent / parent, (*parents, path)),
+        )
+    return merge(inherited, config)
 
 
 def resolve(target):
@@ -45,13 +55,13 @@ def project_path(value):
 def validate(config):
     for key in ("experiment", "data", "tokenizer", "model", "training", "metrics", "generation"):
         if not isinstance(config.get(key), dict):
-            raise ValueError(f"Missing config section: {key}")
+            raise TypeError(f"Missing config section: {key}")
     name = config["experiment"]["name"]
     if not name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in name):
         raise ValueError("experiment.name must contain only letters, digits, '_' or '-'")
     for section in ("data", "tokenizer", "model"):
         if not callable(resolve(config[section]["target"])):
-            raise ValueError(f"{section}.target must be callable")
+            raise TypeError(f"{section}.target must be callable")
     resolve(config["model"]["config_target"])(**config["model"].get("params", {}))
     resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {}))
     if config["data"]["batch_size"] < 1:

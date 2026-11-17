@@ -8,6 +8,9 @@ data:
     size: 32
   train_limit: 50000
   batch_size: 16
+tokenizer:
+  params:
+    channel_transform: rgb
 metrics:
   names: [fid, precision, recall]
   encoders: [inception]

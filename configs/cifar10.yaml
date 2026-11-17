@@ -6,5 +6,8 @@ data:
     ds_name: cifar10
     gray: false
   batch_size: 16
+tokenizer:
+  params:
+    channel_transform: rgb
 metrics:
   clip_prompts: [airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck]

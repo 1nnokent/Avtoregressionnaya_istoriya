@@ -1,0 +1,9 @@
+tokenizer:
+  params:
+    quantization:
+      method: kmeans
+      grouping: joint_channels
+      num_bins: 256
+      sample_size: 200000
+      iterations: 20
+      seed: 0

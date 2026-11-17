@@ -1,0 +1,5 @@
+extends:
+  - cifar10.yaml
+  - presets/kmeans_scalar_256.yaml
+experiment:
+  name: cifar10_dct_kmeans_scalar_256
