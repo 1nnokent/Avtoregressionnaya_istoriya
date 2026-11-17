@@ -77,3 +77,11 @@ def test_partial_config_keeps_defaults():
     assert (
         tokenizer.quantizer.method == "uniform" and tokenizer.quantizer.num_bins == 64
     )
+
+
+def test_unknown_state_format_is_rejected(images):
+    state = Tokenizer().fit(images).state_dict()
+    state["state_format"] = np.asarray(99, dtype=np.int64)
+
+    with pytest.raises(ValueError, match="unsupported tokenizer state format 99"):
+        Tokenizer().load_state_dict(state)

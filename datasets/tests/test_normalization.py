@@ -48,3 +48,14 @@ def test_minmax_maps_train_to_unit_interval():
 def test_unfitted_normalizer_fails():
     with pytest.raises(RuntimeError):
         Normalizer()(np.zeros((2, 2)))
+
+
+def test_state_roundtrip_preserves_normalized_values():
+    train = np.array([[-2.0, 0.0], [1.0, 4.0]])
+    values = np.array([[-1.0, 2.0]])
+    fitted = Normalizer(transform="none", per_position=True).fit(train)
+
+    restored = Normalizer(transform="none", per_position=True)
+    restored.load_state_dict(fitted.state_dict())
+
+    np.testing.assert_array_equal(restored(values), fitted(values))

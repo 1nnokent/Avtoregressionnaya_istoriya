@@ -1,6 +1,7 @@
 """Exercise component boundaries with synthetic data; never call train_model."""
 import json
 import sys
+from dataclasses import asdict
 
 import numpy as np
 import pytest
@@ -40,6 +41,45 @@ def test_saved_tokenizer_preserves_training_state(tmp_path, per_position):
     restored = load_tokenizer(tmp_path / "tokenizer.npz", "datasets.src.tokenizer:Tokenizer")
     np.testing.assert_array_equal(tokenizer.encode(images), restored.encode(images))
     np.testing.assert_array_equal(tokenizer.decode(tokenizer.encode(images)), restored.decode(restored.encode(images)))
+
+
+def test_saved_tokenizer_uses_self_describing_component_state(tmp_path):
+    images = np.random.default_rng(11).random((8, 1, 4, 4)).astype(np.float32)
+    tokenizer = Tokenizer().fit(images)
+    path = tmp_path / "tokenizer.npz"
+
+    save_tokenizer(path, tokenizer)
+
+    with np.load(path, allow_pickle=False) as state:
+        assert int(state["state_format"]) == 1
+        assert {
+            "image_shape",
+            "normalizer.offset",
+            "normalizer.spread",
+            "quantizer.thresholds",
+            "quantizer.centers",
+        } <= set(state.files)
+        assert "offset" not in state.files
+        assert "thresholds" not in state.files
+
+
+def test_legacy_uniform_tokenizer_archive_loads(tmp_path):
+    images = np.random.default_rng(12).random((8, 1, 4, 4)).astype(np.float32)
+    tokenizer = Tokenizer().fit(images)
+    path = tmp_path / "tokenizer.npz"
+    np.savez_compressed(
+        path,
+        config=json.dumps(asdict(tokenizer.config)),
+        image_shape=tokenizer.image_shape,
+        offset=tokenizer.normalizer.offset,
+        spread=tokenizer.normalizer.spread,
+        thresholds=tokenizer.quantizer.thresholds,
+        centers=tokenizer.quantizer.centers,
+    )
+
+    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+
+    np.testing.assert_array_equal(restored.encode(images), tokenizer.encode(images))
 
 
 def test_tokens_connect_to_original_model_without_training():

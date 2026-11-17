@@ -52,3 +52,18 @@ def test_per_position_shapes():
         np.random.default_rng(0).random((100, 7))
     )
     assert quantizer.thresholds.shape == (7, 9) and quantizer.centers.shape == (7, 10)
+
+
+def test_state_roundtrip_preserves_tokens_and_decoding():
+    train = np.array([[-2.0, 0.0], [1.0, 4.0]])
+    values = np.array([[-1.0, 2.0]])
+    fitted = Quantizer(num_bins=4, per_position=True).fit(train)
+
+    restored = Quantizer(num_bins=4, per_position=True)
+    restored.load_state_dict(fitted.state_dict())
+
+    expected_tokens = fitted.encode(values)
+    np.testing.assert_array_equal(restored.encode(values), expected_tokens)
+    np.testing.assert_array_equal(
+        restored.decode(expected_tokens), fitted.decode(expected_tokens)
+    )
