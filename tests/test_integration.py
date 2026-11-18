@@ -54,6 +54,34 @@ def test_rgb_kmeans_experiment_matrix(dataset, grouping, num_bins):
     assert quantization["num_bins"] == num_bins
 
 
+@pytest.mark.parametrize(
+    ("dataset", "grouping", "num_bins"),
+    [
+        ("cifar10", "scalar_channels", 256),
+        ("cifar10", "joint_channels", 256),
+        ("cifar10", "joint_channels", 768),
+        ("celeba", "scalar_channels", 256),
+        ("celeba", "joint_channels", 256),
+        ("celeba", "joint_channels", 768),
+    ],
+)
+def test_ycbcr_kmeans_experiment_matrix(dataset, grouping, num_bins):
+    variant = "scalar" if grouping == "scalar_channels" else "joint"
+    filename = f"{dataset}_ycbcr_dct_kmeans_{variant}_{num_bins}.yaml"
+    config = load_config(ROOT / "configs" / filename)
+
+    validate(config)
+
+    assert config["experiment"]["name"] == filename.removesuffix(".yaml")
+    assert config["data"]["params"]["ds_name"] == dataset
+    assert config["data"]["params"]["gray"] is False
+    assert config["tokenizer"]["params"]["channel_transform"] == "ycbcr"
+    quantization = config["tokenizer"]["params"]["quantization"]
+    assert quantization["method"] == "kmeans"
+    assert quantization["grouping"] == grouping
+    assert quantization["num_bins"] == num_bins
+
+
 def test_multiple_config_parents_merge_left_to_right(tmp_path):
     (tmp_path / "first.yaml").write_text(
         "section:\n  first: 1\n  shared: first\n", encoding="utf-8"
