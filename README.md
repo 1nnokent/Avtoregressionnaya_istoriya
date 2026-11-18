@@ -1,111 +1,193 @@
-# Авторегрессионная генерация изображений
+# Autoregressive Image Generation in Spectral Space
 
-Объединены три авторские части: модель, датасеты/токенизация и метрики.
-Общий запуск связывает их через YAML-конфиг. Алгоритмы компонентов сохранены.
+This research studies image generation as autoregressive modeling of discrete
+spectral coefficients.
+
+## Current method
 
 ```text
-model/          # ветка model: модель и обучение
-datasets/       # ветка data/baseline: загрузка и токенизация
-metrics/        # ветка metrics: генерация, энкодеры, формулы метрик
-experiments/    # связующий код: конфиги, запуск, состояние, логирование
-configs/        # конфиги общих экспериментов с наследованием
-  datasets/     # исходные конфиги обработки данных
-  model/        # исходные настройки модели и обучения
-scripts/        # установка окружения
-tests/          # все тесты: данные, модель, интеграция и ноутбук
-run_experiment.py
-requirements.txt
+image
+  -> channel transform
+  -> spectral decomposition
+  -> frequency ordering
+  -> normalization
+  -> quantization
+  -> discrete token sequence
+  -> causal Transformer
+  -> generated token sequence
+  -> inverse quantization and inverse transforms
+  -> generated image
 ```
 
-Конфиги общего запуска лежат непосредственно в `configs/`; исходные конфиги
-компонентов — в `configs/datasets/` и `configs/model/`.
+### 1. Channel representation
 
-Все тесты находятся в `tests/` и запускаются из корня командой `python -m pytest`.
-Отдельный компонент можно проверить, указав его файл, например
-`python -m pytest tests/test_model.py`.
+Supported channel transforms:
 
-Рабочая платформа — **локальный Python 3.12**; `device: auto` выбирает CUDA,
-если она доступна, иначе CPU. Colab/Kaggle для запуска не требуются.
+- `grayscale`;
+- `rgb`;
+- `ycbcr`.
 
-## Окружение и проверка без обучения
+### 2. Spectral decomposition
 
-Из корня проекта в PowerShell:
+The default representation uses an orthonormal two-dimensional DCT-II. The
+research also supports block DCT, a real-valued DFT representation based on the
+Hartley transform, and wavelet decomposition.
 
-```powershell
-.\scripts\setup.ps1 -Dev
-.\.venv\Scripts\python.exe run_experiment.py --config configs/mnist.yaml --dry-run
-.\.venv\Scripts\python.exe -m pytest
+| Decomposition | Interpretation |
+|---|---|
+| `dct` | global image frequencies |
+| `block_dct` | local spectra computed independently inside image blocks |
+| `dft` | interleaved real-valued Fourier/Hartley coefficients |
+| `wavelet` | multiscale spatial-frequency coefficients |
+
+
+### 3. Coefficient ordering
+
+A two-dimensional spectrum must be linearized before it can be modeled by a
+causal sequence model. The default zigzag traversal places low-frequency DCT
+coefficients first and gradually moves toward higher frequencies.
+
+Available orderings are:
+
+- `zigzag` — diagonal low-to-high frequency traversal;
+- `radial` — increasing normalized distance from the spectrum origin;
+- `dyadic` — frequency regions expanding by powers of two;
+- `block` — image blocks first, then zigzag order inside each block.
+
+### 4. Normalization and quantization
+
+Spectral coefficients have highly non-uniform scales. The tokenizer can apply
+a signed logarithm followed by min-max or standard scaling before fitting a
+quantizer on the training split.
+
+Three quantization strategies are used:
+
+- **uniform** — scalar bins shared globally or fitted per sequence position;
+- **scalar-channel K-means** — one scalar codebook per channel;
+- **joint-channel K-means** — one vector codebook fitted to aligned
+  cross-channel coefficients.
+
+For an image with `C` channels and `H x W` spectral positions:
+
+- uniform and scalar-channel K-means produce `C * H * W` tokens;
+- joint-channel K-means produces `H * W` tokens because one token represents
+  the complete channel vector at a frequency position.
+
+The codebook size is the model vocabulary size. Current experiments compare
+K=256 and K=768 for joint-channel K-means and K=256 for scalar-channel
+K-means.
+
+### 5. Autoregressive model
+
+Let `z = (z_1, ..., z_L)` be the quantized spectral sequence. The model learns
+
+```text
+p(z_1, ..., z_L) = product_t p(z_t | z_1, ..., z_{t-1})
 ```
 
-Установка создаёт/использует `.venv`, устанавливает общие зависимости
-и проверяет конфиг. Обучение и скачивание датасетов/весов она не запускает.
-В Linux: `python3.12 -m venv .venv`, затем
-`.venv/bin/python -m pip install -r requirements-dev.txt`.
-Подбор сборки PyTorch под GPU описан в [официальной инструкции](https://pytorch.org/get-started/locally/).
-Версии `torch` и `torchvision` нужно менять согласованно.
-Авторские `*/requirements.txt` сохранены для истории; устанавливать нужно корневой файл.
+using next-token cross-entropy. The implementation is a decoder-only
+Transformer with causal self-attention, rotary positional embeddings, GELU
+feed-forward layers, and a dedicated beginning-of-sequence token.
 
-## Эксперименты
+## Current experiments
 
-`python run_experiment.py --config configs/mnist.yaml --dry-run` проверяет
-конфиг и фабрики без создания модели, загрузки данных/весов и записи результатов.
+The configuration system separates the main experimental axes:
 
-Команды ниже предназначены для последующего запуска пользователем:
+- dataset: MNIST, CIFAR-10, CelebA;
+- color representation: RGB or YCbCr for color datasets;
+- decomposition: DCT or block DCT in the runnable examples;
+- quantization: uniform, scalar-channel K-means, joint-channel K-means;
+- vocabulary size: 256 or 768;
+- Transformer and training parameters.
 
-```powershell
-# Обучение; после него — валидация и выбранные метрики.
+Each config entry is an explicit runnable YAML file, while shared axis values
+are composed through presets. See [configs/README.md](configs/README.md) for
+the inheritance model and the complete naming rules.
+
+## Quick start
+
+The project targets Python 3.12 and runs on CPU or CUDA.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+```
+
+Validate and inspect an experiment without loading data, creating a model, or
+writing artifacts:
+
+```bash
+python run_experiment.py \
+  --config configs/cifar10_ycbcr_dct_kmeans_joint_768.yaml \
+  --dry-run
+```
+
+## Training and generation
+
+Train an experiment:
+
+```bash
 python run_experiment.py --config configs/mnist.yaml
-
-# Оценка готового checkpoint, без обучения.
-python run_experiment.py --config configs/mnist.yaml --mode evaluate --checkpoint runs/<name>/<run>/latest.pt
-
-# Продолжение обучения, с новым каталогом результатов.
-python run_experiment.py --config configs/mnist.yaml --checkpoint runs/<name>/<run>/latest.pt
 ```
 
-Для нового эксперимента скопируйте короткий конфиг с `extends: base.yaml`
-и измените нужные поля. Примеры: `mnist_block_dct.yaml`, `cifar10.yaml`,
-`mnist_clip.yaml`. Параметры модели — `model.params`, данные — `data.params`,
-токенизация — `tokenizer.params`, метрики/энкодеры — `metrics`.
-Размер словаря и длина последовательности определяются токенизатором.
-Все поля с пояснениями — в [configs/base.yaml](configs/base.yaml).
+Evaluate an existing checkpoint without training:
 
-`target: package.module:ClassOrFunction` выбирает другую уже реализованную
-модель, загрузчик или токенизатор без изменения запуска. Интерфейсы должны
-совпадать с текущими: модель принимает объект конфига и поддерживает `generate`,
-загрузчик возвращает NCHW-массив, токенизатор предоставляет `fit/encode/decode`
-и состояние текущих normalizer/quantizer. Новому алгоритму нужен его исходник;
-для выбора существующих реализаций достаточно конфига.
+```bash
+python run_experiment.py \
+  --config configs/mnist.yaml \
+  --mode evaluate \
+  --checkpoint runs/<experiment>/<run>/latest.pt
+```
 
-Пути данных, результатов и checkpoint считаются от корня проекта;
-`extends` — от файла конфига. Токенизатор подгоняется только по train.
-При оценке/продолжении берётся `tokenizer.npz` рядом с checkpoint,
-его параметры из текущего конфига не переобучаются. Архитектура модели должна
-совпадать с checkpoint. Исходный trainer продолжает со следующей эпохи,
-даже если checkpoint был сохранён посередине эпохи.
+Resume training into a new run directory:
 
-MNIST/CIFAR-10 скачиваются штатным загрузчиком при настоящем запуске.
-CelebA/ImageNet нужно положить в `data/` по структуре,
-описанной в `datasets/src/datasets_loader.py`. Для ImageNet `val` выделяется
-из train, официальный каталог val используется как test.
-Исходные энкодеры метрик работают только с grayscale: оставьте `gray: true`
-или отключите `metrics.enabled` для RGB. CLIP использует авторские подсказки
-цифр, поэтому пример с CLIP предназначен для MNIST.
-Первый расчёт метрик скачивает предобученные веса Inception/CLIP.
-200 изображений — исходный пример для проверки, не надёжная оценка качества.
+```bash
+python run_experiment.py \
+  --config configs/mnist.yaml \
+  --checkpoint runs/<experiment>/<run>/latest.pt
+```
 
-## Логирование
+Evaluation and resumed training restore `tokenizer.npz` from the checkpoint directory so the same
+normalization statistics and codebooks are used.
 
-Выбран локальный формат **JSONL + console.log**, без внешних сервисов и аккаунтов.
-В `runs/<experiment.name>/<UTC-время>-<id>/` сохраняются:
+## Data and tokenization
 
-- `config.yaml`, `metadata.json`: полный конфиг, seed, устройство, версии пакетов, Git commit;
-- `console.log`, `metrics.jsonl`: вывод обучения, train loss, val loss/perplexity, события запуска;
-- `tokenizer.npz`, `latest.pt`, при улучшении валидации — `best.pt`;
-- `summary.json`: итоговые val loss/perplexity и выбранные FID, IS, precision/recall по энкодерам.
+Dataset sources, split rules, local ImageNet layout, tensor shapes, spectral
+transforms, and the tokenizer API are documented in
+[datasets/README.md](datasets/README.md).
 
-Используются функции автора из `metrics/`; связующий слой приводит форму
-изображений и записывает результаты. Частота train/val-логов задаётся
-существующими `log_interval` / `eval_interval`.
+## Evaluation
 
-Минимальный отчёт об изменениях — [CHANGES.md](CHANGES.md).
+Generated images can be evaluated with FID, Inception Score, precision, and
+recall using Inception or CLIP features. The configured sample counts are
+appropriate for pipeline checks; reliable model comparisons require larger
+evaluation sets and controlled training budgets.
+
+## Outputs
+
+Each run is stored under:
+
+```text
+runs/<experiment.name>/<UTC timestamp>-<run id>/
+```
+
+## Tests
+
+Run the complete suite:
+
+```bash
+python -m pytest
+```
+
+Run only the executable notebook contract:
+
+```bash
+python -m pytest tests/test_pipeline_notebook.py
+```
+
+## Documentation
+
+- [Dataset loading and spectral tokenization](datasets/README.md)
+- [Experiment configurations and inheritance](configs/README.md)
+- [Complete shared configuration reference](configs/base.yaml)
