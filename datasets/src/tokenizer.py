@@ -1,4 +1,5 @@
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from typing import cast
 
 import numpy as np
@@ -136,6 +137,34 @@ class Tokenizer:
                 if key.startswith("quantizer.")
             }
         )
+
+    def save(self, path):
+        np.savez_compressed(
+            path,
+            config=json.dumps(asdict(self.config)),
+            **self.state_dict(),
+        )
+
+    @classmethod
+    def load(cls, path):
+        with np.load(path, allow_pickle=False) as state:
+            tokenizer = cls(json.loads(str(state["config"])))
+            if "state_format" in state.files:
+                tokenizer.load_state_dict(
+                    {key: state[key] for key in state.files if key != "config"}
+                )
+            else:
+                tokenizer.image_shape = cast(
+                    tuple[int, int, int],
+                    tuple(int(value) for value in state["image_shape"]),
+                )
+                tokenizer.normalizer.load_state_dict(
+                    {"offset": state["offset"], "spread": state["spread"]}
+                )
+                tokenizer.quantizer.load_state_dict(
+                    {"thresholds": state["thresholds"], "centers": state["centers"]}
+                )
+        return tokenizer
 
     def _indices(self, height: int, width: int) -> np.ndarray:
         return ordering_indices(self.config.ordering, height, width, **self.config.ordering_params)

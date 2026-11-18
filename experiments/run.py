@@ -1,21 +1,21 @@
 """Configuration-driven glue for the three independently written components."""
 import argparse
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from datetime import datetime, timezone
 import importlib.metadata
 import json
 import random
 import subprocess
 import sys
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, TensorDataset
 import yaml
+from torch.utils.data import DataLoader, TensorDataset
 
-from experiments.artifacts import RunLog, load_tokenizer, save_tokenizer
 from experiments.config import ROOT, load_config, project_path, resolve, validate
+from experiments.logger import RunLog
 from model.src.train import evaluate, load_checkpoint, train_model
 
 
@@ -67,7 +67,7 @@ def make_metrics_hook(config, tokenizer, device, logger, directory):
     interval = settings.get("train_interval")
     if not settings["enabled"] or not interval:
         return None
-    from experiments.evaluation import evaluate_images
+    from metrics.evaluation import evaluate_images
     real_images = load_split(config, "val", settings["train_num_images"])
 
     def hook(model, step):
@@ -101,11 +101,17 @@ def run(config, mode, checkpoint=None):
         device = "cuda" if torch.cuda.is_available() else "cpu"
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise ValueError("CUDA is unavailable; use device: cpu or auto")
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     directory = project_path(config["experiment"]["output_dir"]) / config["experiment"]["name"] / f"{stamp}-{uuid4().hex[:8]}"
     directory.mkdir(parents=True, exist_ok=False)
     (directory / "config.yaml").write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     metadata = {
         "mode": mode, "device": device, "seed": seed, "checkpoint": str(checkpoint) if checkpoint else None,
         "git_commit": revision.stdout.strip(), "python": sys.version,
@@ -121,10 +127,10 @@ def run(config, mode, checkpoint=None):
                 train_images = load_split(config, "train", config["data"].get("train_limit"))
                 tokenizer = resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {})).fit(train_images)
             else:
-                tokenizer = load_tokenizer(checkpoint.parent / "tokenizer.npz", config["tokenizer"]["target"])
+                tokenizer = resolve(config["tokenizer"]["target"]).load(checkpoint.parent / "tokenizer.npz")
                 if mode == "train":
                     train_images = load_split(config, "train", config["data"].get("train_limit"))
-            save_tokenizer(directory / "tokenizer.npz", tokenizer)
+            tokenizer.save(directory / "tokenizer.npz")
             model = make_model(config, tokenizer).to(device)
             val_images = load_split(config, "val", config["data"].get("val_limit"))
             val_loader = token_loader(val_images, tokenizer, config)
@@ -138,7 +144,7 @@ def run(config, mode, checkpoint=None):
                 load_checkpoint(checkpoint, model, device=device)
             summary = evaluate(model, val_loader, device, config["training"].get("max_val_batches"))
             if config["metrics"]["enabled"]:
-                from experiments.evaluation import evaluate_images
+                from metrics.evaluation import evaluate_images
                 real_images = load_split(config, config["data"].get("evaluation_split", "test"), config["generation"]["num_images"])
                 if len(real_images) < config["generation"]["num_images"]:
                     raise ValueError("Evaluation split is smaller than generation.num_images")

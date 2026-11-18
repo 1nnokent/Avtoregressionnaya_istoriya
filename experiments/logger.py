@@ -1,35 +1,5 @@
-"""Persist fitted preprocessing, and capture the original trainer's print logs."""
 import json
 import re
-from dataclasses import asdict
-
-import numpy as np
-
-from experiments.config import resolve
-
-
-def save_tokenizer(path, tokenizer):
-    np.savez_compressed(
-        path, config=json.dumps(asdict(tokenizer.config)), **tokenizer.state_dict()
-    )
-
-
-def load_tokenizer(path, target):
-    with np.load(path, allow_pickle=False) as state:
-        tokenizer = resolve(target)(json.loads(str(state["config"])))
-        if "state_format" in state.files:
-            tokenizer.load_state_dict(
-                {key: state[key] for key in state.files if key != "config"}
-            )
-        else:
-            tokenizer.image_shape = tuple(int(i) for i in state["image_shape"])
-            tokenizer.normalizer.load_state_dict(
-                {"offset": state["offset"], "spread": state["spread"]}
-            )
-            tokenizer.quantizer.load_state_dict(
-                {"thresholds": state["thresholds"], "centers": state["centers"]}
-            )
-    return tokenizer
 
 
 class RunLog:

@@ -9,8 +9,8 @@ import torch
 
 from datasets.src.tokenizer import Tokenizer
 from experiments import run as runner
-from experiments.artifacts import RunLog, load_tokenizer, save_tokenizer
 from experiments.config import ROOT, load_config, validate
+from experiments.logger import RunLog
 from model.src.train import prepare_batch
 
 
@@ -84,8 +84,8 @@ def test_circular_inheritance_is_rejected(tmp_path):
 def test_saved_tokenizer_preserves_training_state(tmp_path, per_position):
     images = np.random.default_rng(1).random((8, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer({"normalization": {"per_position": per_position}, "quantization": {"per_position": per_position}}).fit(images)
-    save_tokenizer(tmp_path / "tokenizer.npz", tokenizer)
-    restored = load_tokenizer(tmp_path / "tokenizer.npz", "datasets.src.tokenizer:Tokenizer")
+    tokenizer.save(tmp_path / "tokenizer.npz")
+    restored = Tokenizer.load(tmp_path / "tokenizer.npz")
     np.testing.assert_array_equal(tokenizer.encode(images), restored.encode(images))
     np.testing.assert_array_equal(tokenizer.decode(tokenizer.encode(images)), restored.decode(restored.encode(images)))
 
@@ -95,7 +95,7 @@ def test_saved_tokenizer_uses_self_describing_component_state(tmp_path):
     tokenizer = Tokenizer().fit(images)
     path = tmp_path / "tokenizer.npz"
 
-    save_tokenizer(path, tokenizer)
+    tokenizer.save(path)
 
     with np.load(path, allow_pickle=False) as state:
         assert int(state["state_format"]) == 1
@@ -124,7 +124,7 @@ def test_legacy_uniform_tokenizer_archive_loads(tmp_path):
         centers=tokenizer.quantizer.centers,
     )
 
-    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+    restored = Tokenizer.load(path)
 
     np.testing.assert_array_equal(restored.encode(images), tokenizer.encode(images))
 
@@ -145,8 +145,8 @@ def test_scalar_kmeans_tokenizer_archive_preserves_tokens(tmp_path):
     ).fit(images)
     path = tmp_path / "tokenizer.npz"
 
-    save_tokenizer(path, tokenizer)
-    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+    tokenizer.save(path)
+    restored = Tokenizer.load(path)
 
     expected_tokens = tokenizer.encode(images)
     np.testing.assert_array_equal(restored.encode(images), expected_tokens)
@@ -215,8 +215,8 @@ def test_joint_kmeans_tokenizer_archive_preserves_tokens(tmp_path):
     ).fit(images)
     path = tmp_path / "tokenizer.npz"
 
-    save_tokenizer(path, tokenizer)
-    restored = load_tokenizer(path, "datasets.src.tokenizer:Tokenizer")
+    tokenizer.save(path)
+    restored = Tokenizer.load(path)
 
     expected_tokens = tokenizer.encode(images)
     np.testing.assert_array_equal(restored.encode(images), expected_tokens)
@@ -264,7 +264,7 @@ def test_evaluate_uses_saved_tokenizer_and_never_trains(tmp_path, monkeypatch):
     model = runner.make_model(cfg, tokenizer)
     checkpoint = tmp_path / "latest.pt"
     torch.save({"model": model.state_dict(), "model_config": vars(model.config)}, checkpoint)
-    save_tokenizer(tmp_path / "tokenizer.npz", tokenizer)
+    tokenizer.save(tmp_path / "tokenizer.npz")
     splits = []
 
     def synthetic_split(config, split, limit):
@@ -329,8 +329,7 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
 
 
 def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
-    from experiments import evaluation
-    from metrics.src.metrics import encoders
+    from metrics import encoders, evaluation
 
     images = np.random.default_rng(4).random((5, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer().fit(images)
