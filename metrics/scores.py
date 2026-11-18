@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.spatial.distance import cdist
 
-
 FEATURE_BATCH = 100
 DIST_CHUNK = 1024
 IS_EPS = 1e-12

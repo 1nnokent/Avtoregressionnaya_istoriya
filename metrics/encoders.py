@@ -1,10 +1,9 @@
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torchvision.models import inception_v3, Inception_V3_Weights
+from torch import nn
+from torchvision.models import Inception_V3_Weights, inception_v3
 from transformers import CLIPModel, CLIPTokenizer
-
 
 INCEPTION_SIZE = 299
 IMAGENET_MEAN = [0.485, 0.456, 0.406]

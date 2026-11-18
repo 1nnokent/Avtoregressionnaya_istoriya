@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 
-from datasets.src.ordering import ORDERINGS, forward_ordering, invert_ordering, ordering_indices
+from datasets.src.ordering import (
+    ORDERINGS,
+    forward_ordering,
+    invert_ordering,
+    ordering_indices,
+)
 
 
 def test_matches_jpeg_order():

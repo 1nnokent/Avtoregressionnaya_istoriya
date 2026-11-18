@@ -4,7 +4,6 @@ from pathlib import Path
 import nbformat
 from nbclient import NotebookClient
 
-
 NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks" / "pipeline_demo.ipynb"
 REQUIRED_SECTIONS = (
     "## 1. Подготовка",
