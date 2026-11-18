@@ -1,0 +1,6 @@
+extends:
+  - celeba.yaml
+  - presets/channel_ycbcr.yaml
+  - presets/kmeans_joint_768.yaml
+experiment:
+  name: celeba_ycbcr_dct_kmeans_joint_768

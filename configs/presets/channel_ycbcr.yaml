@@ -1,0 +1,3 @@
+tokenizer:
+  params:
+    channel_transform: ycbcr

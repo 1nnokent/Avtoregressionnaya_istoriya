@@ -1,0 +1,6 @@
+extends:
+  - cifar10.yaml
+  - presets/channel_ycbcr.yaml
+  - presets/kmeans_scalar_256.yaml
+experiment:
+  name: cifar10_ycbcr_dct_kmeans_scalar_256

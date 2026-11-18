@@ -1,0 +1,6 @@
+extends:
+  - celeba.yaml
+  - presets/channel_ycbcr.yaml
+  - presets/kmeans_scalar_256.yaml
+experiment:
+  name: celeba_ycbcr_dct_kmeans_scalar_256
