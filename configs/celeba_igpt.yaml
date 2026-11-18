@@ -1,0 +1,30 @@
+extends: celeba.yaml
+experiment:
+  name: celeba_dct_igpt
+data:
+  batch_size: 32
+model:
+  target: model.src.igpt:SpectralImageGPT
+  config_target: model.src.igpt:IGPTConfig
+  params:
+    d_model: 512
+    n_heads: 8
+    n_layers: 24
+    d_ff: 2048
+    dropout: 0.0
+    query_chunk: 4096         # как ATTN_QUERY_CHUNK у учителя: attention без разбиения
+    gradient_checkpointing: true
+training:
+  epochs: 2
+  max_steps: 5000
+  learning_rate: 3.0e-4
+  weight_decay: 0.01
+  betas: [0.9, 0.95]
+  lr_schedule: cosine
+  warmup_steps: 100
+  min_lr_ratio: 0.1
+  checkpoint_interval: 500
+  eval_interval: 500
+generation:
+  batch_size: 50
+  top_k: 128

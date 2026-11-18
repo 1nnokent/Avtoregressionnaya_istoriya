@@ -62,8 +62,8 @@ metrics:
   encoders: [inception]    # inception | clip; download pretrained weights
   batch_size: 100
   k: 3
-  train_interval: 1000     # метрики картинок во время обучения каждые N шагов (на val); null — выключено
-  train_num_images: 100    # сколько картинок генерировать для этих промежуточных метрик
+  train_interval: 1000
+  train_num_images: 100
 generation:
   num_images: 200
   batch_size: 50

@@ -7,16 +7,16 @@ data:
   params:
     ds_name: celeba
     gray: false
-    size: 32                 # одно разрешение для всех моделей
+    size: 32
   train_limit: null
   tokenizer_fit_limit: 20000
-  batch_size: 16             # 32 не влезает в T4 (OOM); шагов вдвое больше, данных столько же
+  batch_size: 16
   evaluation_split: test
 model:
   params:
     d_model: 512
     n_heads: 8
-    n_layers: 8              # ~25M параметров; 24 слоя = масштаб iGPT, но обучение намного дольше
+    n_layers: 8
     d_ff: 2048
     dropout: 0.0
 training:
@@ -29,11 +29,11 @@ training:
 metrics:
   names: [ fid, is, precision, recall ]
   encoders: [inception]
-  train_interval: null       # промежуточные метрики дорогие; считаем в конце
+  train_interval: null
 generation:
-  num_images: 1000             # как у iGPT и диффузии
-  batch_size: 25             # KV-кеш генерации в fp32; 100 не влезает в T4
-  temperature: 1.0           # как у iGPT; 0.7 занижает разнообразие (recall)
+  num_images: 1000
+  batch_size: 25
+  temperature: 1.0
   top_k: null
 tokenizer:
   params:
