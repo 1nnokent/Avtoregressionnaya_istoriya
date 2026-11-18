@@ -14,8 +14,7 @@ configs/
   base.yaml       complete defaults and the MNIST DCT baseline
   *.yaml          runnable experiment entry points
   presets/        reusable fragments for independent experiment axes
-  datasets/       original component settings; not runner configurations
-  model/          original component settings; not runner configurations
+  reference/      original component settings; not runner configurations
 ```
 
 The location of a file defines its role:
@@ -30,9 +29,9 @@ The location of a file defines its role:
 - `presets/` contains partial dictionaries that represent one independent
   choice. `channel_*.yaml` selects a channel transform; `kmeans_*.yaml` selects
   K-means grouping and vocabulary size. Presets are not runnable on their own.
-- `datasets/` and `model/` preserve settings from the original standalone
-  components. They use different schemas and are not accepted by the shared
-  experiment runner.
+- `reference/` preserves dataset and model settings from the original
+  standalone components. They use different schemas and are not accepted by
+  the shared experiment runner.
 
 ## Inheritance and merge order
 
