@@ -3,19 +3,19 @@
 This research studies image generation as autoregressive modeling of discrete
 spectral coefficients.
 
-## Current method
+## Method
 
 ```text
 image
   -> channel transform
   -> spectral decomposition
-  -> frequency ordering
+  -> coefficient ordering
   -> normalization
   -> quantization
   -> discrete token sequence
   -> causal Transformer
   -> generated token sequence
-  -> inverse quantization and inverse transforms
+  -> inverse quantization and transforms
   -> generated image
 ```
 
@@ -60,7 +60,7 @@ Spectral coefficients have highly non-uniform scales. The tokenizer can apply
 a signed logarithm followed by min-max or standard scaling before fitting a
 quantizer on the training split.
 
-Three quantization strategies are used:
+Implemented quantizers:
 
 - **uniform** — scalar bins shared globally or fitted per sequence position;
 - **scalar-channel K-means** — one scalar codebook per channel;
@@ -79,32 +79,32 @@ K-means.
 
 ### 5. Autoregressive model
 
-Let `z = (z_1, ..., z_L)` be the quantized spectral sequence. The model learns
+For a quantized sequence `z = (z_1, ..., z_L)`, the model learns
 
 ```text
 p(z_1, ..., z_L) = product_t p(z_t | z_1, ..., z_{t-1})
 ```
 
-using next-token cross-entropy. The implementation is a decoder-only
-Transformer with causal self-attention, rotary positional embeddings, GELU
-feed-forward layers, and a dedicated beginning-of-sequence token.
+using next-token cross-entropy. The implementation is a decoder-only Transformer
+with causal self-attention, rotary positional embeddings, GELU feed-forward
+layers, and a dedicated beginning-of-sequence token. A larger spectral iGPT
+variant with gradient checkpointing and chunked attention is available for the
+CelebA comparison configuration.
 
-## Current experiments
+## Repository layout
 
-The configuration system separates the main experimental axes:
+```text
+datasets/       dataset loaders and the spectral tokenizer
+model/          autoregressive models, training, checkpoints, and generation
+metrics/        image generation, encoders, metrics, and visualizations
+experiments/    configuration loading and the shared experiment runner
+configs/        runnable YAML experiments and reusable presets
+compare/        CelebA preparation and reference-model comparison utilities
+tests/          unit and integration tests
+run_experiment.py
+```
 
-- dataset: MNIST, CIFAR-10, CelebA;
-- color representation: RGB or YCbCr for color datasets;
-- decomposition: DCT or block DCT in the runnable examples;
-- quantization: uniform, scalar-channel K-means, joint-channel K-means;
-- vocabulary size: 256 or 768;
-- Transformer and training parameters.
-
-Each config entry is an explicit runnable YAML file, while shared axis values
-are composed through presets. See [configs/README.md](configs/README.md) for
-the inheritance model and the complete naming rules.
-
-## Quick start
+## Installation
 
 The project targets Python 3.12 and runs on CPU or CUDA.
 
@@ -183,7 +183,9 @@ python -m pytest
 Run only the executable notebook contract:
 
 ```bash
-python -m pytest tests/test_pipeline_notebook.py
+python -m pytest tests/test_tokenizer.py
+python -m pytest tests/test_model.py
+python -m pytest tests/test_prepare_celeba.py
 ```
 
 ## Documentation
