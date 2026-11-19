@@ -62,6 +62,7 @@ metrics:
   encoders: [inception]    # inception | clip; download pretrained weights
   batch_size: 100
   k: 3
+  tokenizer_num_images: 100  # val-изображения для roundtrip токенизатора и статистики токенов
   train_interval: 1000     # метрики картинок во время обучения каждые N шагов (на val); null — выключено
   train_num_images: 100    # сколько картинок генерировать для этих промежуточных метрик
 generation:

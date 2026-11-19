@@ -1,3 +1,5 @@
+from numbers import Integral
+
 import numpy as np
 from scipy.spatial.distance import cdist
 
@@ -6,6 +8,57 @@ DIST_CHUNK = 1024
 IS_EPS = 1e-12
 PR_K = 3
 SELF_NEIGHBOR = 0
+
+
+def reconstruction_metrics(original, reconstructed, data_range=1.0):
+    original = np.asarray(original)
+    reconstructed = np.asarray(reconstructed)
+    if not np.isfinite(data_range) or data_range <= 0:
+        raise ValueError("data_range must be finite and positive")
+    if original.shape != reconstructed.shape:
+        raise ValueError("original and reconstructed images must have matching shapes")
+    if original.size == 0:
+        raise ValueError("images must be non-empty")
+    if not np.isfinite(original).all() or not np.isfinite(reconstructed).all():
+        raise ValueError("images must contain only finite values")
+
+    difference = original.astype(np.float64) - reconstructed
+    mse = float(np.mean(difference**2))
+    psnr = float("inf") if mse == 0 else float(10 * np.log10(data_range**2 / mse))
+    return {"mse": mse, "psnr": psnr}
+
+
+def token_usage_metrics(tokens, vocab_size):
+    tokens = np.asarray(tokens)
+    if tokens.ndim != 2:
+        raise ValueError("tokens must be two-dimensional")
+    if tokens.size == 0:
+        raise ValueError("tokens must be non-empty")
+    if not np.issubdtype(tokens.dtype, np.integer):
+        raise ValueError("tokens must have an integer dtype")
+    if isinstance(vocab_size, bool) or not isinstance(vocab_size, Integral):
+        raise TypeError("vocab_size must be an integer")
+    if vocab_size <= 0:
+        raise ValueError("vocab_size must be positive")
+    if tokens.min() < 0 or tokens.max() >= vocab_size:
+        raise ValueError("token ID is outside the vocabulary")
+
+    counts = np.bincount(tokens.ravel(), minlength=vocab_size)
+    frequencies = counts / counts.sum()
+    used = frequencies > 0
+    entropy = float(-np.sum(frequencies[used] * np.log2(frequencies[used])))
+    used_tokens = int(np.count_nonzero(used))
+    return {
+        "sequence_length": int(tokens.shape[1]),
+        "vocab_size": int(vocab_size),
+        "token_count": int(tokens.size),
+        "used_tokens": used_tokens,
+        "unused_tokens": int(vocab_size - used_tokens),
+        "utilization": float(used_tokens / vocab_size),
+        "entropy_bits": entropy,
+        "effective_vocab_size": float(2**entropy),
+        "frequencies": frequencies.tolist(),
+    }
 
 
 def get_features(images, encoder, batch_size=FEATURE_BATCH):

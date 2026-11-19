@@ -1,4 +1,5 @@
 """Exercise component boundaries with synthetic data; never call train_model."""
+
 import json
 import sys
 from dataclasses import asdict
@@ -24,6 +25,22 @@ def test_all_example_configs_validate():
     block = load_config(ROOT / "configs/mnist_block_dct.yaml")
     assert block["tokenizer"]["params"]["decomposition_params"] == {"block_size": 7}
     assert block["model"]["params"]["d_model"] == 128
+
+
+@pytest.mark.parametrize("limit", [0, -1, 1.5, True])
+def test_tokenizer_metric_image_limit_must_be_a_positive_integer(limit):
+    cfg = config()
+    cfg["metrics"]["tokenizer_num_images"] = limit
+
+    with pytest.raises(ValueError, match="positive integer"):
+        validate(cfg)
+
+
+def test_legacy_config_without_tokenizer_metric_limit_still_validates():
+    cfg = config()
+    del cfg["metrics"]["tokenizer_num_images"]
+
+    validate(cfg)
 
 
 @pytest.mark.parametrize(
@@ -111,11 +128,19 @@ def test_circular_inheritance_is_rejected(tmp_path):
 @pytest.mark.parametrize("per_position", [False, True])
 def test_saved_tokenizer_preserves_training_state(tmp_path, per_position):
     images = np.random.default_rng(1).random((8, 1, 4, 4)).astype(np.float32)
-    tokenizer = Tokenizer({"normalization": {"per_position": per_position}, "quantization": {"per_position": per_position}}).fit(images)
+    tokenizer = Tokenizer(
+        {
+            "normalization": {"per_position": per_position},
+            "quantization": {"per_position": per_position},
+        }
+    ).fit(images)
     tokenizer.save(tmp_path / "tokenizer.npz")
     restored = Tokenizer.load(tmp_path / "tokenizer.npz")
     np.testing.assert_array_equal(tokenizer.encode(images), restored.encode(images))
-    np.testing.assert_array_equal(tokenizer.decode(tokenizer.encode(images)), restored.decode(restored.encode(images)))
+    np.testing.assert_array_equal(
+        tokenizer.decode(tokenizer.encode(images)),
+        restored.decode(restored.encode(images)),
+    )
 
 
 def test_saved_tokenizer_uses_self_describing_component_state(tmp_path):
@@ -257,9 +282,17 @@ def test_tokens_connect_to_original_model_without_training():
     images = np.random.default_rng(2).random((2, 1, 4, 4)).astype(np.float32)
     tokenizer = Tokenizer().fit(images)
     cfg = config()
-    cfg["model"]["params"] = {"d_model": 8, "n_heads": 2, "n_layers": 1, "d_ff": 16, "dropout": 0}
+    cfg["model"]["params"] = {
+        "d_model": 8,
+        "n_heads": 2,
+        "n_layers": 1,
+        "d_ff": 16,
+        "dropout": 0,
+    }
     model = runner.make_model(cfg, tokenizer).eval()
-    inputs, targets = prepare_batch(next(iter(runner.token_loader(images, tokenizer, cfg))), model, "cpu")
+    inputs, targets = prepare_batch(
+        next(iter(runner.token_loader(images, tokenizer, cfg))), model, "cpu"
+    )
     with torch.no_grad():
         logits = model(inputs)
     assert logits.shape == (2, 16, 256)
@@ -273,6 +306,7 @@ def test_tokens_connect_to_original_model_without_training():
 def test_dry_run_cannot_load_data_or_train(monkeypatch, capsys):
     def forbidden(*args, **kwargs):
         pytest.fail("Dry run tried to load data or train")
+
     monkeypatch.setattr(runner, "load_split", forbidden)
     monkeypatch.setattr(runner, "run", forbidden)
     monkeypatch.setattr(runner, "train_model", forbidden)
@@ -286,12 +320,20 @@ def test_evaluate_uses_saved_tokenizer_and_never_trains(tmp_path, monkeypatch):
     cfg = config()
     cfg["experiment"]["output_dir"] = str(tmp_path / "runs")
     cfg["experiment"]["device"] = "cpu"
-    cfg["model"]["params"] = {"d_model": 8, "n_heads": 2, "n_layers": 1, "d_ff": 16, "dropout": 0}
+    cfg["model"]["params"] = {
+        "d_model": 8,
+        "n_heads": 2,
+        "n_layers": 1,
+        "d_ff": 16,
+        "dropout": 0,
+    }
     cfg["metrics"]["enabled"] = False
     tokenizer = Tokenizer().fit(images)
     model = runner.make_model(cfg, tokenizer)
     checkpoint = tmp_path / "latest.pt"
-    torch.save({"model": model.state_dict(), "model_config": vars(model.config)}, checkpoint)
+    torch.save(
+        {"model": model.state_dict(), "model_config": vars(model.config)}, checkpoint
+    )
     tokenizer.save(tmp_path / "tokenizer.npz")
     splits = []
 
@@ -311,17 +353,89 @@ def test_evaluate_uses_saved_tokenizer_and_never_trains(tmp_path, monkeypatch):
     assert summary["val_loss"] > 0
     assert (directory / "tokenizer.npz").is_file()
     assert not (directory / "latest.pt").exists()
-    events = [json.loads(line) for line in (directory / "metrics.jsonl").read_text().splitlines()]
+    events = [
+        json.loads(line)
+        for line in (directory / "metrics.jsonl").read_text().splitlines()
+    ]
     assert [event["event"] for event in events] == ["started", "completed"]
+
+
+@pytest.mark.parametrize(
+    ("configured_limit", "expected_num_images"),
+    [(2, 2), (None, 4)],
+)
+def test_evaluate_records_tokenizer_metrics_on_validation_images(
+    tmp_path, monkeypatch, configured_limit, expected_num_images
+):
+    from metrics import evaluation
+
+    images = np.random.default_rng(30).random((4, 1, 4, 4)).astype(np.float32)
+    cfg = config()
+    cfg["experiment"].update(output_dir=str(tmp_path / "runs"), device="cpu")
+    cfg["model"]["params"] = {
+        "d_model": 8,
+        "n_heads": 2,
+        "n_layers": 1,
+        "d_ff": 16,
+        "dropout": 0,
+    }
+    if configured_limit is None:
+        del cfg["metrics"]["tokenizer_num_images"]
+    else:
+        cfg["metrics"]["tokenizer_num_images"] = configured_limit
+    cfg["metrics"]["k"] = 1
+    cfg["generation"]["num_images"] = 2
+    validate(cfg)
+    tokenizer = Tokenizer().fit(images)
+    model = runner.make_model(cfg, tokenizer)
+    checkpoint = tmp_path / "latest.pt"
+    torch.save(
+        {"model": model.state_dict(), "model_config": vars(model.config)},
+        checkpoint,
+    )
+    tokenizer.save(tmp_path / "tokenizer.npz")
+    splits = []
+
+    def synthetic_split(config, split, limit):
+        splits.append((split, limit))
+        return images
+
+    monkeypatch.setattr(runner, "load_split", synthetic_split)
+    monkeypatch.setattr(
+        evaluation,
+        "evaluate_images",
+        lambda *args, **kwargs: {"clipped_frac": 0.0, "inception": {}},
+    )
+
+    directory = runner.run(cfg, "evaluate", str(checkpoint))
+
+    summary = json.loads((directory / "summary.json").read_text())
+    tokenizer_metrics = summary["tokenizer"]
+    assert splits == [("val", None), ("test", 2)]
+    assert tokenizer_metrics["split"] == "val"
+    assert tokenizer_metrics["num_images"] == expected_num_images
+    assert tokenizer_metrics["token_usage"]["token_count"] == (expected_num_images * 16)
+    events = [
+        json.loads(line)
+        for line in (directory / "metrics.jsonl").read_text().splitlines()
+    ]
+    event = next(item for item in events if item["event"] == "tokenizer_metrics")
+    assert event["split"] == "val"
+    assert event["num_images"] == expected_num_images
+    assert event["token_usage"]["token_count"] == expected_num_images * 16
 
 
 def test_training_prints_are_logged_without_changing_trainer(tmp_path):
     import io
+
     log = RunLog(tmp_path, io.StringIO())
     log.write("epoch=1 step=20 train_")
     log.write("loss=4.1234\nstep=200 val_loss=3.4567 val_perplexity=31.71\n")
     log.close()
-    events = [json.loads(line) for line in (tmp_path / "metrics.jsonl").read_text().splitlines()]
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "metrics.jsonl").read_text().splitlines()
+    ]
     assert events[0]["train_loss"] == 4.1234
     assert events[1]["val_perplexity"] == 31.71
 
@@ -331,7 +445,13 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
     images = np.random.default_rng(5).random((4, 1, 4, 4)).astype(np.float32)
     cfg = config()
     cfg["experiment"].update(output_dir=str(tmp_path), device="cpu")
-    cfg["model"]["params"] = {"d_model": 8, "n_heads": 2, "n_layers": 1, "d_ff": 16, "dropout": 0}
+    cfg["model"]["params"] = {
+        "d_model": 8,
+        "n_heads": 2,
+        "n_layers": 1,
+        "d_ff": 16,
+        "dropout": 0,
+    }
     cfg["metrics"]["enabled"] = False
     seen = []
 
@@ -341,12 +461,16 @@ def test_training_wiring_with_trainer_replaced_by_stub(tmp_path, monkeypatch):
 
     def trainer_stub(model, train_loader, val_loader, training, device, on_step=None):
         from pathlib import Path
+
         assert next(iter(train_loader))[0].shape == (4, 16)
         assert next(iter(val_loader))[0].shape == (2, 16)
         assert training["resume_from"] is None
         assert (Path(training["checkpoint_dir"]) / "tokenizer.npz").exists()
         # Simulate checkpoint output without backward, optimizer or weight updates.
-        torch.save({"model": model.state_dict(), "model_config": vars(model.config)}, Path(training["checkpoint_dir"]) / "latest.pt")
+        torch.save(
+            {"model": model.state_dict(), "model_config": vars(model.config)},
+            Path(training["checkpoint_dir"]) / "latest.pt",
+        )
         return model
 
     monkeypatch.setattr(runner, "load_split", synthetic_split)
@@ -378,7 +502,9 @@ def test_metrics_receive_grayscale_images_without_weight_downloads(monkeypatch):
             return batch, torch.softmax(batch, dim=-1)
 
     monkeypatch.setitem(encoders.ENCODERS, "inception", SyntheticEncoder)
-    monkeypatch.setattr(evaluation, "generate_images", lambda *args, **kwargs: (images.copy(), 0.0))
+    monkeypatch.setattr(
+        evaluation, "generate_images", lambda *args, **kwargs: (images.copy(), 0.0)
+    )
     summary = evaluation.evaluate_images(None, tokenizer, images, cfg, "cpu")
     assert seen == [(5, 1, 4, 4), (5, 1, 4, 4)]
     assert abs(summary["inception"]["fid"]) < 1e-6

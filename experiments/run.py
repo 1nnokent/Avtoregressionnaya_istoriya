@@ -1,4 +1,5 @@
 """Configuration-driven glue for the three independently written components."""
+
 import argparse
 import importlib.metadata
 import json
@@ -14,7 +15,14 @@ import torch
 import yaml
 from torch.utils.data import DataLoader, TensorDataset
 
-from experiments.config import ROOT, load_config, project_path, resolve, validate
+from experiments.config import (
+    DEFAULT_TOKENIZER_NUM_IMAGES,
+    ROOT,
+    load_config,
+    project_path,
+    resolve,
+    validate,
+)
 from experiments.logger import RunLog
 from model.src.train import evaluate, load_checkpoint, train_model
 
@@ -31,24 +39,36 @@ def load_split(config, split, limit):
         raise ValueError(f"Empty {split} split")
     return images
 
+
 def token_loader(images, tokenizer, config, shuffle=False):
     dtype = np.uint8 if tokenizer.vocab_size <= UINT8_VOCAB_LIMIT else np.int32
     tokens = np.empty((len(images), tokenizer.sequence_length), dtype=dtype)
     for start in range(0, len(images), ENCODE_CHUNK):
-        tokens[start:start + ENCODE_CHUNK] = tokenizer.encode(images[start:start + ENCODE_CHUNK])
+        tokens[start : start + ENCODE_CHUNK] = tokenizer.encode(
+            images[start : start + ENCODE_CHUNK]
+        )
     return DataLoader(
-        TensorDataset(torch.from_numpy(tokens)), batch_size=config["data"]["batch_size"], shuffle=shuffle,
+        TensorDataset(torch.from_numpy(tokens)),
+        batch_size=config["data"]["batch_size"],
+        shuffle=shuffle,
         num_workers=config["data"].get("num_workers", 0),
     )
 
 
 def make_model(config, tokenizer):
     params = dict(config["model"].get("params", {}))
-    for key, value in (("vocab_size", tokenizer.vocab_size), ("max_seq_len", tokenizer.sequence_length)):
+    for key, value in (
+        ("vocab_size", tokenizer.vocab_size),
+        ("max_seq_len", tokenizer.sequence_length),
+    ):
         if key in params and params[key] != value:
-            raise ValueError(f"model.params.{key} must match tokenizer ({value}) or be omitted")
+            raise ValueError(
+                f"model.params.{key} must match tokenizer ({value}) or be omitted"
+            )
         params[key] = value
-    return resolve(config["model"]["target"])(resolve(config["model"]["config_target"])(**params))
+    return resolve(config["model"]["target"])(
+        resolve(config["model"]["config_target"])(**params)
+    )
 
 
 @contextmanager
@@ -73,6 +93,7 @@ def make_metrics_hook(config, tokenizer, device, logger, directory):
     if not settings["enabled"] or not interval:
         return None
     from metrics.evaluation import evaluate_images
+
     real_images = load_split(config, "val", settings["train_num_images"])
 
     def hook(model, step):
@@ -81,11 +102,16 @@ def make_metrics_hook(config, tokenizer, device, logger, directory):
         step_dir = directory / TRAIN_SAMPLES_DIR / f"step_{step}"
         step_dir.mkdir(parents=True, exist_ok=True)
         with preserved_rng(device):
-            result = evaluate_images(model, tokenizer, real_images, config, device, output_dir=step_dir)
+            result = evaluate_images(
+                model, tokenizer, real_images, config, device, output_dir=step_dir
+            )
         flat = {"clipped_frac": result.pop("clipped_frac")}
         for encoder, values in result.items():
             flat.update({f"{encoder}_{key}": value for key, value in values.items()})
-        print(f"step={step} " + " ".join(f"{key}={value:.4f}" for key, value in flat.items()))
+        print(
+            f"step={step} "
+            + " ".join(f"{key}={value:.4f}" for key, value in flat.items())
+        )
         logger.record("image_metrics", step=step, **flat)
 
     return hook
@@ -107,9 +133,15 @@ def run(config, mode, checkpoint=None):
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise ValueError("CUDA is unavailable; use device: cpu or auto")
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    directory = project_path(config["experiment"]["output_dir"]) / config["experiment"]["name"] / f"{stamp}-{uuid4().hex[:8]}"
+    directory = (
+        project_path(config["experiment"]["output_dir"])
+        / config["experiment"]["name"]
+        / f"{stamp}-{uuid4().hex[:8]}"
+    )
     directory.mkdir(parents=True, exist_ok=False)
-    (directory / "config.yaml").write_text(yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    (directory / "config.yaml").write_text(
+        yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
     revision = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=ROOT,
@@ -118,45 +150,103 @@ def run(config, mode, checkpoint=None):
         check=False,
     )
     metadata = {
-        "mode": mode, "device": device, "seed": seed, "checkpoint": str(checkpoint) if checkpoint else None,
-        "git_commit": revision.stdout.strip(), "python": sys.version,
-        "packages": {d.metadata["Name"]: d.version for d in importlib.metadata.distributions()},
+        "mode": mode,
+        "device": device,
+        "seed": seed,
+        "checkpoint": str(checkpoint) if checkpoint else None,
+        "git_commit": revision.stdout.strip(),
+        "python": sys.version,
+        "packages": {
+            d.metadata["Name"]: d.version for d in importlib.metadata.distributions()
+        },
     }
-    (directory / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (directory / "metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
     logger = RunLog(directory, sys.stdout)
     try:
         with redirect_stdout(logger), redirect_stderr(logger):
             logger.record("started", mode=mode, device=device)
             print(f"Run: {directory}")
             if mode == "train" and checkpoint is None:
-                train_images = load_split(config, "train", config["data"].get("train_limit"))
+                train_images = load_split(
+                    config, "train", config["data"].get("train_limit")
+                )
                 fit_limit = config["data"].get("tokenizer_fit_limit")
-                fit_images = train_images if fit_limit is None else train_images[:fit_limit]
-                tokenizer = resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {})).fit(fit_images)
+                fit_images = (
+                    train_images if fit_limit is None else train_images[:fit_limit]
+                )
+                tokenizer = resolve(config["tokenizer"]["target"])(
+                    config["tokenizer"].get("params", {})
+                ).fit(fit_images)
             else:
-                tokenizer = resolve(config["tokenizer"]["target"]).load(checkpoint.parent / "tokenizer.npz")
+                tokenizer = resolve(config["tokenizer"]["target"]).load(
+                    checkpoint.parent / "tokenizer.npz"
+                )
                 if mode == "train":
-                    train_images = load_split(config, "train", config["data"].get("train_limit"))
+                    train_images = load_split(
+                        config, "train", config["data"].get("train_limit")
+                    )
             tokenizer.save(directory / "tokenizer.npz")
             model = make_model(config, tokenizer).to(device)
             val_images = load_split(config, "val", config["data"].get("val_limit"))
+            tokenizer_summary = None
+            if config["metrics"]["enabled"]:
+                from metrics.evaluation import evaluate_tokenizer
+
+                num_images = config["metrics"].get(
+                    "tokenizer_num_images", DEFAULT_TOKENIZER_NUM_IMAGES
+                )
+                metric_images = val_images[:num_images]
+                tokenizer_summary = {
+                    "split": "val",
+                    **evaluate_tokenizer(tokenizer, metric_images),
+                }
+                logger.record("tokenizer_metrics", **tokenizer_summary)
             val_loader = token_loader(val_images, tokenizer, config)
             if mode == "train":
-                training = {**config["training"], "checkpoint_dir": str(directory), "resume_from": str(checkpoint) if checkpoint else None}
-                on_step = make_metrics_hook(config, tokenizer, device, logger, directory)
-                model = train_model(model, token_loader(train_images, tokenizer, config, shuffle=True), val_loader, training, device,
-                                    on_step=on_step)
+                training = {
+                    **config["training"],
+                    "checkpoint_dir": str(directory),
+                    "resume_from": str(checkpoint) if checkpoint else None,
+                }
+                on_step = make_metrics_hook(
+                    config, tokenizer, device, logger, directory
+                )
+                model = train_model(
+                    model,
+                    token_loader(train_images, tokenizer, config, shuffle=True),
+                    val_loader,
+                    training,
+                    device,
+                    on_step=on_step,
+                )
                 checkpoint = directory / "latest.pt"
             else:
                 load_checkpoint(checkpoint, model, device=device)
-            summary = evaluate(model, val_loader, device, config["training"].get("max_val_batches"))
+            summary = evaluate(
+                model, val_loader, device, config["training"].get("max_val_batches")
+            )
+            if tokenizer_summary is not None:
+                summary["tokenizer"] = tokenizer_summary
             if config["metrics"]["enabled"]:
                 from metrics.evaluation import evaluate_images
-                real_images = load_split(config, config["data"].get("evaluation_split", "test"), config["generation"]["num_images"])
+
+                real_images = load_split(
+                    config,
+                    config["data"].get("evaluation_split", "test"),
+                    config["generation"]["num_images"],
+                )
                 if len(real_images) < config["generation"]["num_images"]:
-                    raise ValueError("Evaluation split is smaller than generation.num_images")
-                summary["images"] = evaluate_images(model, tokenizer, real_images, config, device, output_dir=directory)
-            (directory / "summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False), encoding="utf-8")
+                    raise ValueError(
+                        "Evaluation split is smaller than generation.num_images"
+                    )
+                summary["images"] = evaluate_images(
+                    model, tokenizer, real_images, config, device, output_dir=directory
+                )
+            (directory / "summary.json").write_text(
+                json.dumps(summary, indent=2, allow_nan=False), encoding="utf-8"
+            )
             logger.record("completed", checkpoint=str(checkpoint), **summary)
             print(json.dumps(summary, indent=2))
     except Exception as error:
@@ -171,15 +261,24 @@ def main(default_mode="train"):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(ROOT / "configs" / "mnist.yaml"))
     parser.add_argument("--mode", choices=("train", "evaluate"), default=default_mode)
-    parser.add_argument("--checkpoint", help="Existing checkpoint, used for evaluation or training resume")
-    parser.add_argument("--dry-run", action="store_true", help="Validate and print config without loading datasets or building a model")
+    parser.add_argument(
+        "--checkpoint",
+        help="Existing checkpoint, used for evaluation or training resume",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and print config without loading datasets or building a model",
+    )
     args = parser.parse_args()
     try:
         config = load_config(args.config)
         validate(config)
         checkpoint = args.checkpoint or config["experiment"].get("checkpoint")
         if args.mode == "evaluate" and not checkpoint:
-            raise ValueError("Evaluation requires --checkpoint or experiment.checkpoint")
+            raise ValueError(
+                "Evaluation requires --checkpoint or experiment.checkpoint"
+            )
         if args.dry_run:
             print(yaml.safe_dump(config, allow_unicode=True, sort_keys=False))
             print("Configuration OK; no data loaded, no model training started.")

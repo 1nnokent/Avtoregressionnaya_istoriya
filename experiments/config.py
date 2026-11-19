@@ -1,11 +1,14 @@
 """Small YAML loader with relative inheritance and dotted Python factories."""
+
 from copy import deepcopy
 from importlib import import_module
+from numbers import Integral
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_TOKENIZER_NUM_IMAGES = 100
 
 
 def merge(base, overrides):
@@ -53,12 +56,25 @@ def project_path(value):
 
 
 def validate(config):
-    for key in ("experiment", "data", "tokenizer", "model", "training", "metrics", "generation"):
+    for key in (
+        "experiment",
+        "data",
+        "tokenizer",
+        "model",
+        "training",
+        "metrics",
+        "generation",
+    ):
         if not isinstance(config.get(key), dict):
             raise TypeError(f"Missing config section: {key}")
     name = config["experiment"]["name"]
-    if not name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in name):
-        raise ValueError("experiment.name must contain only letters, digits, '_' or '-'")
+    if not name or any(
+        c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        for c in name
+    ):
+        raise ValueError(
+            "experiment.name must contain only letters, digits, '_' or '-'"
+        )
     for section in ("data", "tokenizer", "model"):
         if not callable(resolve(config[section]["target"])):
             raise TypeError(f"{section}.target must be callable")
@@ -94,10 +110,28 @@ def validate(config):
             raise ValueError("metrics.train_interval must be positive or null")
         if metrics["train_num_images"] <= metrics["k"]:
             raise ValueError("metrics.train_num_images must be greater than metrics.k")
+    tokenizer_num_images = metrics.get(
+        "tokenizer_num_images", DEFAULT_TOKENIZER_NUM_IMAGES
+    )
+    if (
+        isinstance(tokenizer_num_images, bool)
+        or not isinstance(tokenizer_num_images, Integral)
+        or tokenizer_num_images < 1
+    ):
+        raise ValueError("metrics.tokenizer_num_images must be a positive integer")
     generation = config["generation"]
-    if generation["num_images"] < 2 or generation["batch_size"] < 1 or metrics["batch_size"] < 1:
+    if (
+        generation["num_images"] < 2
+        or generation["batch_size"] < 1
+        or metrics["batch_size"] < 1
+    ):
         raise ValueError("Need at least two evaluation images and positive batch sizes")
-    if metrics["k"] < 1 or (set(metrics["names"]) & {"precision", "recall"} and generation["num_images"] <= metrics["k"]):
+    if metrics["k"] < 1 or (
+        set(metrics["names"]) & {"precision", "recall"}
+        and generation["num_images"] <= metrics["k"]
+    ):
         raise ValueError("Precision/recall require num_images > k >= 1")
-    if generation["temperature"] <= 0 or (generation.get("top_k") is not None and generation["top_k"] < 1):
+    if generation["temperature"] <= 0 or (
+        generation.get("top_k") is not None and generation["top_k"] < 1
+    ):
         raise ValueError("temperature and top_k must be positive")
