@@ -18,6 +18,9 @@ from experiments.config import ROOT, load_config, project_path, resolve, validat
 from experiments.logger import RunLog
 from model.src.train import evaluate, load_checkpoint, train_model
 
+ENCODE_CHUNK = 2048
+UINT8_VOCAB_LIMIT = 256
+
 
 def load_split(config, split, limit):
     params = dict(config["data"].get("params", {}))
@@ -28,11 +31,13 @@ def load_split(config, split, limit):
         raise ValueError(f"Empty {split} split")
     return images
 
-
 def token_loader(images, tokenizer, config, shuffle=False):
-    tokens = torch.from_numpy(tokenizer.encode(images)).long()
+    dtype = np.uint8 if tokenizer.vocab_size <= UINT8_VOCAB_LIMIT else np.int32
+    tokens = np.empty((len(images), tokenizer.sequence_length), dtype=dtype)
+    for start in range(0, len(images), ENCODE_CHUNK):
+        tokens[start:start + ENCODE_CHUNK] = tokenizer.encode(images[start:start + ENCODE_CHUNK])
     return DataLoader(
-        TensorDataset(tokens), batch_size=config["data"]["batch_size"], shuffle=shuffle,
+        TensorDataset(torch.from_numpy(tokens)), batch_size=config["data"]["batch_size"], shuffle=shuffle,
         num_workers=config["data"].get("num_workers", 0),
     )
 
@@ -125,7 +130,9 @@ def run(config, mode, checkpoint=None):
             print(f"Run: {directory}")
             if mode == "train" and checkpoint is None:
                 train_images = load_split(config, "train", config["data"].get("train_limit"))
-                tokenizer = resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {})).fit(train_images)
+                fit_limit = config["data"].get("tokenizer_fit_limit")
+                fit_images = train_images if fit_limit is None else train_images[:fit_limit]
+                tokenizer = resolve(config["tokenizer"]["target"])(config["tokenizer"].get("params", {})).fit(fit_images)
             else:
                 tokenizer = resolve(config["tokenizer"]["target"]).load(checkpoint.parent / "tokenizer.npz")
                 if mode == "train":

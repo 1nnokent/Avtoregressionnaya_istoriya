@@ -15,8 +15,15 @@ DATASETS = ("mnist", "cifar10", "celeba", "imagenet")
 SPLITS = ("train", "val", "test")
 CIFAR10_HF_URL = "https://huggingface.co/datasets/uoft-cs/cifar10/resolve/main/plain_text/{split}-00000-of-00001.parquet"
 CELEBA_HF_URL = "https://huggingface.co/datasets/flwrlabs/celeba/resolve/main/img_align%2Bidentity%2Battr/{shard}.parquet"
-CELEBA_HF_SHARDS = {"train": "train-00000-of-00019", "val": "valid-00000-of-00003", "test": "test-00000-of-00003"}
+CELEBA_HF_SPLITS = {
+    "train": ("train", 19),
+    "val": ("valid", 3),
+    "test": ("test", 3),
+}
 LUMA = np.array([0.299, 0.587, 0.114], dtype=np.float32)
+COMMON_CELEBA_DIR = "celeba_common"
+COMMON_BASE_SIZE = 64
+UINT8_MAX = 255.0
 
 
 def train_val_indices(n: int, val_fraction: float = 0.1, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
@@ -97,9 +104,37 @@ def _download(url: str, path: Path) -> Path:
     return path
 
 
+def celeba_parquet_paths(split: str, root: str | Path = DATA_DIR) -> list[Path]:
+    """Download and return every parquet shard for a CelebA split."""
+    return [
+        _celeba_parquet_path(split, index, root)
+        for index in range(_celeba_split(split)[1])
+    ]
+
+
+def _celeba_split(split: str) -> tuple[str, int]:
+    if split not in CELEBA_HF_SPLITS:
+        expected = tuple(CELEBA_HF_SPLITS)
+        raise ValueError(f"unknown CelebA split {split!r}, expected one of {expected}")
+    return CELEBA_HF_SPLITS[split]
+
+
+def _celeba_parquet_path(split: str, index: int, root: str | Path) -> Path:
+    prefix, num_shards = _celeba_split(split)
+    root = Path(root)
+    shard = f"{prefix}-{index:05d}-of-{num_shards:05d}"
+    # Preserve the old first-shard path so an existing cache is reused.
+    filename = f"{split}.parquet" if index == 0 else f"{shard}.parquet"
+    return _download(
+        CELEBA_HF_URL.format(shard=shard),
+        root / "celeba" / filename,
+    )
+
+
 def _load_celeba(split: str, root: Path) -> list[bytes]:
-    url = CELEBA_HF_URL.format(shard=CELEBA_HF_SHARDS[split])
-    path = _download(url, root / "celeba" / f"{split}.parquet")
+    # The legacy in-memory loader keeps using one shard. Full-split experiments
+    # use the streamed common cache built by compare.prepare_celeba.
+    path = _celeba_parquet_path(split, 0, root)
     return [image["bytes"] for image in pq.read_table(path, columns=["image"]).column("image").to_pylist()]
 
 
@@ -107,3 +142,40 @@ def _load_cifar10(split: str, root: Path) -> np.ndarray:
     path = _download(CIFAR10_HF_URL.format(split=split), root / "cifar10" / f"{split}.parquet")
     pngs = pq.read_table(path, columns=["img"]).column("img").to_pylist()
     return np.stack([np.asarray(Image.open(io.BytesIO(png["bytes"]))) for png in pngs]).transpose(0, 3, 1, 2)
+
+def downsample_uint8(images, size):
+    """[N, H, W, 3] uint8 -> [N, size, size, 3] через LANCZOS. Одинаково для всех моделей."""
+    images = np.asarray(images)
+    if images.shape[1] == size:
+        return images
+    return np.stack([
+        np.asarray(Image.fromarray(image).resize((size, size), Image.Resampling.LANCZOS))
+        for image in images
+    ])
+
+
+def load_common_celeba(
+    ds_name: str = "celeba",
+    split: str = "train",
+    gray: bool = False,
+    size: int = COMMON_BASE_SIZE,
+    limit: int | None = None,
+    val_fraction: float = 0.1,   # не используется, нужен для совместимости с конфигом
+    seed: int = 0,
+    root: str | Path = DATA_DIR,
+) -> np.ndarray:
+    path = Path(root) / COMMON_CELEBA_DIR / f"celeba_{split}_{COMMON_BASE_SIZE}px.npy"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path}: сначала запустите python -m compare.prepare_celeba --split {split}"
+        )
+    cache = np.load(path, mmap_mode="r")
+    if limit is None:
+        indices = np.arange(len(cache))
+    else:
+        indices = np.sort(np.random.default_rng(seed).permutation(len(cache))[:limit])
+    images = downsample_uint8(cache[indices], size)
+    images = images.transpose(0, 3, 1, 2).astype(np.float32) / UINT8_MAX
+    if gray:
+        images = np.einsum("c,nchw->nhw", LUMA, images)[:, None]
+    return images

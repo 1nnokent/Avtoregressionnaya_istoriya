@@ -68,7 +68,7 @@ def validate(config):
         raise ValueError("data.batch_size must be positive")
     if config["data"].get("evaluation_split", "test") not in ("val", "test"):
         raise ValueError("Evaluation must use val or test split")
-    for key in ("train_limit", "val_limit"):
+    for key in ("train_limit", "val_limit", "tokenizer_fit_limit"):
         value = config["data"].get(key)
         if value is not None and value < 1:
             raise ValueError(f"data.{key} must be positive or null")
