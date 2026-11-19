@@ -5,6 +5,20 @@ import torch
 import torch.nn.functional as F
 
 PRECISIONS = {"fp32": None, "fp16": torch.float16, "bf16": torch.bfloat16}
+DEFAULT_BETAS = (0.9, 0.999)
+LR_SCHEDULES = ("constant", "cosine")
+
+
+def learning_rate(step, config):
+    base = config["learning_rate"]
+    if config.get("lr_schedule", "constant") == "constant":
+        return base
+    warmup = config.get("warmup_steps", 0)
+    if step < warmup:
+        return base * (step + 1) / warmup
+    progress = min(1.0, (step - warmup) / max(1, config["max_steps"] - warmup))
+    min_ratio = config.get("min_lr_ratio", 0.0)
+    return base * (min_ratio + (1.0 - min_ratio) * 0.5 * (1.0 + math.cos(math.pi * progress)))
 
 
 def get_tokens(batch):
@@ -176,6 +190,7 @@ def train_model(
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config["learning_rate"],
+        betas=tuple(config.get("betas", DEFAULT_BETAS)),
         weight_decay=config["weight_decay"],
     )
 
@@ -226,6 +241,10 @@ def train_model(
                 device,
             )
 
+            lr = learning_rate(step, config)
+            for group in optimizer.param_groups:
+                group["lr"] = lr
+
             optimizer.zero_grad(set_to_none=True)
 
             with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=use_amp):
@@ -247,7 +266,8 @@ def train_model(
                 print(
                     f"epoch={epoch + 1} "
                     f"step={step} "
-                    f"train_loss={loss.item():.4f}"
+                    f"train_loss={loss.item():.4f} "
+                    f"lr={lr:.2e}"
                 )
 
             if step % config["eval_interval"] == 0:
@@ -284,6 +304,14 @@ def train_model(
             if step % config["checkpoint_interval"] == 0:
                 save_checkpoint(
                     checkpoint_dir / "latest.pt",
+                    model,
+                    optimizer,
+                    step,
+                    epoch,
+                    best_val_loss,
+                )
+                save_checkpoint(
+                    checkpoint_dir / f"step_{step}.pt",
                     model,
                     optimizer,
                     step,

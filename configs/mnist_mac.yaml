@@ -1,0 +1,13 @@
+# Полный эксперимент mnist.yaml (все данные, все шаги), но под память Mac:
+# отличается от base.yaml только устройством и размерами батчей.
+extends: base.yaml
+experiment:
+  name: mnist_dct_mac
+  device: mps             # видеокарта Mac; если будет ошибка — поставить cpu
+data:
+  batch_size: 16          # батч обучения и валидации (в base.yaml 128 — не влезает в память)
+generation:
+  batch_size: 16          # сколько картинок генерировать за раз (в base.yaml 50)
+metrics:
+  encoders: [inception, clip]   # оба энкодера (в base.yaml только inception)
+  batch_size: 16          # сколько картинок за раз через Inception (в base.yaml 100)

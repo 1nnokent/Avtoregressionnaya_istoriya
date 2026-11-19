@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from datasets.src import datasets_loader
 from datasets.src.datasets_loader import DATA_DIR, load_images, train_val_indices
 
 has_mnist = pytest.mark.skipif(
@@ -23,6 +24,31 @@ def test_train_val_split_is_disjoint():
         and set(train).isdisjoint(val)
         and len(set(train) | set(val)) == 100
     )
+
+
+def test_celeba_parquet_paths_cover_all_shards_and_reuse_first_cache(
+    monkeypatch, tmp_path
+):
+    downloads = []
+
+    def fake_download(url, path):
+        downloads.append((url, path))
+        return path
+
+    monkeypatch.setattr(datasets_loader, "_download", fake_download)
+
+    paths = datasets_loader.celeba_parquet_paths("train", tmp_path)
+
+    assert len(paths) == 19
+    assert paths[0] == tmp_path / "celeba" / "train.parquet"
+    assert paths[-1].name == "train-00018-of-00019.parquet"
+    assert "train-00000-of-00019.parquet" in downloads[0][0]
+    assert "train-00018-of-00019.parquet" in downloads[-1][0]
+
+
+def test_celeba_parquet_paths_reject_unknown_split(tmp_path):
+    with pytest.raises(ValueError, match="unknown CelebA split"):
+        datasets_loader.celeba_parquet_paths("validation", tmp_path)
 
 
 @has_mnist

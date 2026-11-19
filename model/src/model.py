@@ -59,11 +59,11 @@ class RoPE(nn.Module):
             persistent=False,
         )
 
-    def forward(self, x):
+    def forward(self, x, offset=0):
         seq_len = x.size(-2)
-
         positions = torch.arange(
-            seq_len,
+            offset,
+            offset + seq_len,
             device=x.device,
             dtype=self.inv_freq.dtype,
         )
@@ -108,39 +108,28 @@ class CausalSelfAttention(nn.Module):
         self.attn_dropout = config.dropout
         self.resid_dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):
+    def forward(self, x, past=None, use_cache=False):
         batch_size, seq_len, d_model = x.shape
-
-        qkv = self.qkv(x).view(
-            batch_size,
-            seq_len,
-            3,
-            self.n_heads,
-            self.head_dim,
-        )
-
+        qkv = self.qkv(x).view(batch_size, seq_len, 3, self.n_heads, self.head_dim)
         q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(0)
 
-        q = self.rope(q)
-        k = self.rope(k)
+        offset = 0 if past is None else past[0].size(2)
+        q = self.rope(q, offset)
+        k = self.rope(k, offset)
+        if past is not None:
+            if seq_len != 1:
+                raise ValueError("Cached attention expects one new token")
+            k = torch.cat((past[0], k), dim=2)
+            v = torch.cat((past[1], v), dim=2)
 
         y = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            is_causal=True,
-            dropout_p=(
-                self.attn_dropout if self.training else 0.0
-            ),
+            q, k, v,
+            is_causal=past is None,  # один новый токен видит всё прошлое
+            dropout_p=(self.attn_dropout if self.training else 0.0),
         )
-
-        y = y.transpose(1, 2).contiguous().view(
-            batch_size,
-            seq_len,
-            d_model,
-        )
-
-        return self.resid_dropout(self.out_proj(y))
+        y = y.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
+        out = self.resid_dropout(self.out_proj(y))
+        return (out, (k, v)) if use_cache else out
 
 
 class FeedForward(nn.Module):
@@ -167,10 +156,13 @@ class TransformerBlock(nn.Module):
         self.ln2 = nn.LayerNorm(config.d_model)
         self.ffn = FeedForward(config)
 
-    def forward(self, x):
-        x = x + self.attn(self.ln1(x))
+    def forward(self, x, past=None, use_cache=False):
+        attn_out = self.attn(self.ln1(x), past, use_cache)
+        if use_cache:
+            attn_out, present = attn_out
+        x = x + attn_out
         x = x + self.ffn(self.ln2(x))
-        return x
+        return (x, present) if use_cache else x
 
 
 class ImageTokenTransformer(nn.Module):
@@ -268,43 +260,24 @@ class ImageTokenTransformer(nn.Module):
         self.eval()
 
         try:
-            tokens = torch.full(
-                (num_samples, 1),
-                self.bos_token_id,
-                dtype=torch.long,
-                device=device,
-            )
+            generated = torch.empty((num_samples, seq_len), dtype=torch.long, device=device)
+            current = torch.full((num_samples, 1), self.bos_token_id, dtype=torch.long, device=device)
+            cache = [None] * len(self.blocks)
 
-            for _ in range(seq_len):
-                logits = self(tokens)[:, -1, :]
-                logits = logits / temperature
+            for position in range(seq_len):
+                x = self.token_embedding(current)
+                for index, block in enumerate(self.blocks):
+                    x, cache[index] = block(x, cache[index], use_cache=True)
+                logits = self.lm_head(self.final_norm(x))[:, -1, :].float() / temperature
 
                 if top_k is not None:
                     k = min(top_k, logits.size(-1))
-                    threshold = torch.topk(
-                        logits,
-                        k,
-                        dim=-1,
-                    ).values[:, -1:]
+                    threshold = torch.topk(logits, k, dim=-1).values[:, -1:]
+                    logits = logits.masked_fill(logits < threshold, float("-inf"))
 
-                    logits = logits.masked_fill(
-                        logits < threshold,
-                        float("-inf"),
-                    )
+                current = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+                generated[:, position] = current[:, 0]
 
-                probs = F.softmax(logits, dim=-1)
-
-                next_token = torch.multinomial(
-                    probs,
-                    num_samples=1,
-                )
-
-                tokens = torch.cat(
-                    (tokens, next_token),
-                    dim=1,
-                )
-
-            return tokens[:, 1:]
-
+            return generated
         finally:
             self.train(was_training)
